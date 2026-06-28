@@ -1,0 +1,22 @@
+# ----------------------------------
+# Stock_trade - .gitignore
+# ----------------------------------
+
+# Database files
+# trading.db is ~220 MB, far over GitHub's 100 MB per-file limit, and it is
+# fully rebuilt any time you run database.py - so it does not belong in git.
+trading.db
+*.db
+*.db-wal
+*.db-shm
+
+# Python virtual environment (machine-specific, large, regenerable)
+.venv/
+venv/
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+
+# VS Code workspace settings
+.vscode/
