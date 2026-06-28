@@ -69,6 +69,8 @@ BASELINES: dict[str, str] = {
     "^VIX" : "Volatility Index",
     "HYG"  : "High-Yield Bond ETF",
     "^TNX" : "10-Year Treasury Yield",
+    "UUP"  : "Invesco DB US Dollar Index Bullish Fund",
+    "RSP"  : "Invesco S&P 500 Equal Weight ETF",
 }
 
 ML_READY_MIN_ROWS: int = 504
