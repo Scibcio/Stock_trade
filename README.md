@@ -2,9 +2,9 @@
 
 Investment-tracking AI to learn market patterns for swing trading.
 
-**Project stage:** Data foundation. The data-collection pipeline is built and working.
-The machine-learning model, trade signals, and dashboard are **not built yet** — see
-the [Roadmap](#roadmap).
+**Project stage:** Data foundation **done**; signal layer **scaffolded** (module stubs in
+place) and being built **test-first**. The ML models, ensemble, and dashboard are not
+implemented yet — see the [Roadmap](#roadmap).
 
 ---
 
@@ -24,6 +24,27 @@ for the whole S&P 500, ready to train an ML model on later.
 
 ---
 
+## Project structure
+
+```
+database.py      DONE   data collection (OHLCV + baselines -> trading.db)
+
+  -- signal layer (scaffolded, being filled in test-first) --
+config.py        shared constants (paths, barriers, SEQ_LENGTH, walk-forward folds)
+features.py      trading.db -> feature table
+labels.py        triple-barrier target (+ trailing-stop variant for phase 2)
+model_xgb.py     Model A: XGBoost on the WIDE feature set (CPU)
+model_lstm.py    Model B: CNN-LSTM on LEAN 60-day sequences (PyTorch)
+ensemble.py      combine both models' probabilities (gate / blend / meta-learner)
+strategy.py      score -> trades (config-driven risk:reward, position sizing)
+pipeline.py      orchestrator: wires the whole signal layer together
+```
+
+The two models are deliberately different (tabular trees vs temporal network) so their
+errors are decorrelated — combining them is more accurate and steadier than either alone.
+
+---
+
 ## Setup
 
 Requires **Python 3.11+**. The virtual environment and database are not in git
@@ -35,6 +56,10 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install pandas requests yfinance pytz lxml
 ```
+
+Extra libraries are added when their stage arrives: `pytest` for tests, then
+`xgboost` (Model A) and `torch` (Model B). They're lazy-imported, so the pipeline
+imports fine before they're installed.
 
 ## Usage
 
@@ -98,13 +123,52 @@ Top of `database.py`:
   Default `504` ≈ **2 years** of trading days (a year is ~252 trading days, not 365).
   Set higher to demand more history; the flag re-computes every run.
 
+Signal-layer constants live in `config.py` (triple-barrier targets, sequence length,
+and the 12 walk-forward folds).
+
+---
+
+## Testing
+
+This is a quant project, so the bugs don't crash — they quietly produce great-looking
+but fake results. The guiding rule: **a backtest that looks amazing is a leak to hunt,
+not a win to celebrate.** Realistic edges are small.
+
+Each pipeline stage has a **gate** that must pass before the next is built. We develop
+and test on a small **~15-stock dev universe** first (seconds per run), then scale to
+all ~500. Five things every build must satisfy:
+
+| Goal | How it's verified |
+|---|---|
+| Runs correctly | Unit test per module + a small-universe smoke run |
+| Models combine for real lift | Combined AUC **>** each model alone; predictions are decorrelated; meta-learner trained out-of-fold |
+| No data bias / leakage | Features use **past data only**; scaler fits on **train only** (per fold); time-based walk-forward (never random shuffle); purge gap so a label's forward window can't cross the train/test boundary |
+| Data full but manageable | Per-ticker coverage report; memory/size budget; dev on a subset, then scale |
+| Real understanding, not luck | Beat baselines (coin-flip, majority class, buy-and-hold SPY); consistent across folds/regimes; probability calibration; Monte Carlo significance |
+
+**Known limitation — survivorship bias:** the universe is *today's* S&P 500 (the
+survivors), so delisted/dropped names are missing and backtests are optimistically
+biased. Documented, not yet corrected.
+
+Run the tests (once `tests/` exists):
+
+```powershell
+pip install pytest
+pytest -q
+```
+
 ---
 
 ## Roadmap
 
 - [x] Data collection pipeline (S&P 500 OHLCV + market baselines, incremental)
 - [x] ML-ready flagging
-- [ ] **Signal layer** — technical indicators → swing-trade candidates
-- [ ] **ML model** — train on the `ml_ready` stocks to predict swing setups
-- [ ] **Dashboard** — Streamlit UI (the `progress_fn` hook in `database.py` is already wired for it)
+- [x] Signal-layer **scaffold** (module stubs + shared config + walk-forward folds)
+- [ ] `features.py` — port the proven feature maths (test-first, with a leakage test)
+- [ ] `labels.py` — triple-barrier target
+- [ ] **Model A** — XGBoost on the wide feature set
+- [ ] **Model B** — CNN-LSTM (PyTorch) on lean sequences
+- [ ] **Ensemble** — combine both models; confirm it beats each alone
+- [ ] **Strategy + evaluation** — risk:reward presets, port the FYP backtest suite
+- [ ] **Dashboard** — Streamlit UI
 - [ ] **Scheduler** — auto-run daily after market close
