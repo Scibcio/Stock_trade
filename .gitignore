@@ -12,6 +12,14 @@ trading.db
 .venv/
 venv/
 
+# Local planning / notes (private - stays on your machine, not GitHub)
+PROJECT_PLAN.md
+
+# Test / cache artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+
 # Python bytecode cache
 __pycache__/
 *.pyc
