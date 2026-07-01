@@ -13,8 +13,9 @@ from pathlib import Path
 # ----------------------------------
 # PATHS
 # ----------------------------------
-HERE    = Path(__file__).parent
-DB_PATH = HERE / "trading.db"          # built by database.py
+HERE     = Path(__file__).parent
+DB_PATH  = HERE / "trading.db"            # built by database.py
+OOF_PATH = HERE / "walk_forward_oof.csv"  # out-of-fold predictions from pipeline.py
 
 
 # ----------------------------------
@@ -38,6 +39,7 @@ DEV_UNIVERSE = [
 TAKE_PROFIT = 0.03      # +3% upper barrier (a "win")
 STOP_LOSS   = -0.01     # -1% lower barrier (a "loss")
 HOLD_DAYS   = 10        # vertical / time barrier
+PURGE_DAYS  = 14        # calendar days purged before each fold's train_end (covers HOLD_DAYS)
 
 
 # ----------------------------------
