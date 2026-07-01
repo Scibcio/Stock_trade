@@ -29,6 +29,18 @@ TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 ARCHIVE = "https://www.sec.gov/Archives/edgar/data/{cik}/{acc}"
 
+INSIDER_SCHEMA = """
+CREATE TABLE IF NOT EXISTS insider_flow (
+    ticker     TEXT    NOT NULL,
+    date       TEXT    NOT NULL,
+    n_buys     INTEGER,
+    n_sells    INTEGER,
+    buy_value  REAL,
+    sell_value REAL,
+    UNIQUE(ticker, date)
+);
+"""
+
 
 def _get(url: str):
     time.sleep(RATE_SLEEP)
@@ -101,6 +113,37 @@ def parse_form4(cik: int, accession: str) -> list[dict]:
     if not xml_name:
         return []
     return parse_form4_xml(_get(f"{ARCHIVE.format(cik=cik, acc=acc)}/{xml_name}").text)
+
+
+# ----------------------------------
+# DAILY AGGREGATION + STORAGE
+# ----------------------------------
+
+def collect_insider_daily(cik: int, filings: pd.DataFrame) -> pd.DataFrame:
+    # parse each Form 4 and aggregate open-market buys/sells by FILING date (point-in-time)
+    recs = []
+    for _, row in filings.iterrows():
+        txns = parse_form4(cik, row["accession"])
+        buys = [t for t in txns if t["code"] == "P"]
+        sells = [t for t in txns if t["code"] == "S"]
+        recs.append({"date": row["filingDate"],
+                     "n_buys": len(buys), "n_sells": len(sells),
+                     "buy_value": sum(t["shares"] * t["price"] for t in buys),
+                     "sell_value": sum(t["shares"] * t["price"] for t in sells)})
+    df = pd.DataFrame(recs)
+    return df.groupby("date", as_index=False).sum() if not df.empty else df
+
+
+def store_insider(daily: pd.DataFrame, ticker: str, conn) -> int:
+    if daily.empty:
+        return 0
+    rows = [(ticker, r["date"], int(r["n_buys"]), int(r["n_sells"]),
+             float(r["buy_value"]), float(r["sell_value"])) for _, r in daily.iterrows()]
+    conn.executemany(
+        "INSERT OR REPLACE INTO insider_flow (ticker, date, n_buys, n_sells, buy_value, sell_value) "
+        "VALUES (?, ?, ?, ?, ?, ?)", rows)
+    conn.commit()
+    return len(rows)
 
 
 def _demo(ticker: str = "AAPL", n: int = 6) -> None:
