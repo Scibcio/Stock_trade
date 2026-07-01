@@ -3,42 +3,49 @@
 SIGNAL PIPELINE - ENSEMBLE / COMBINER
 --------------------------------------------
 
-Combines the two base-model probabilities (XGBoost + CNN-LSTM) into one final
-score. Because the models are very different (tabular trees vs temporal net),
-their mistakes are decorrelated - so combining them is more accurate and
-steadier than either alone.
+Combines the two base-model OOF probabilities (XGBoost + CNN-LSTM) into one final
+score. The models are diverse (measured corr ~0.42), so combining is both more
+accurate and steadier than either alone.
 
-Start simple (agreement gate + weighted blend). The optional logistic
-meta-learner MUST train on OUT-OF-FOLD predictions (the walk-forward test
-predictions) or it leaks the future and lies to you.
+Discipline: calibrators + meta-learner are FIT on some OOF folds and evaluated on
+LATER, unseen folds - never fit and scored on the same rows (that would leak).
 """
 
 import numpy as np
-import pandas as pd
 
 
-def weighted_blend(p_xgb: np.ndarray,
-                   p_lstm: np.ndarray,
-                   w_xgb: float = 0.5,
-                   w_lstm: float = 0.5) -> np.ndarray:
-    """Weighted average of the two probabilities -> one final score per row."""
-    raise NotImplementedError
+# ----------------------------------
+# CALIBRATION  (Platt / logistic)
+# ----------------------------------
+
+def fit_calibrator(p_raw, y):
+    # Platt scaling: a 1-D logistic maps a raw score -> an honest probability
+    from sklearn.linear_model import LogisticRegression
+    return LogisticRegression().fit(np.asarray(p_raw).reshape(-1, 1), np.asarray(y))
 
 
-def agreement_gate(p_xgb: np.ndarray,
-                   p_lstm: np.ndarray,
-                   threshold: float = 0.75) -> np.ndarray:
-    """
-    Return a 0/1 'take the trade' mask: 1 only when BOTH models clear `threshold`.
-    Fewer trades, higher precision - matches the selective trading style.
-    """
-    raise NotImplementedError
+def apply_calibrator(clf, p_raw) -> np.ndarray:
+    return clf.predict_proba(np.asarray(p_raw).reshape(-1, 1))[:, 1]
 
 
-def train_meta_learner(oof_preds: pd.DataFrame, y: np.ndarray):
-    """
-    Optional combiner: logistic regression on [p_xgb, p_lstm], trained ONLY on
-    out-of-fold base predictions to avoid leakage. Returns the fitted combiner.
-    Keep it simple - a complex stacker on top overfits fast.
-    """
-    raise NotImplementedError
+# ----------------------------------
+# COMBINERS
+# ----------------------------------
+
+def weighted_blend(p1, p2, w1: float = 0.5, w2: float = 0.5) -> np.ndarray:
+    return w1 * np.asarray(p1) + w2 * np.asarray(p2)
+
+
+def agreement_gate(p1, p2, threshold: float = 0.75) -> np.ndarray:
+    # 1 only when BOTH models clear the threshold (high-precision selectivity)
+    return ((np.asarray(p1) >= threshold) & (np.asarray(p2) >= threshold)).astype("int8")
+
+
+def train_meta_learner(P, y):
+    # low-capacity logistic stacker on [p_xgb, p_lstm] (+ optional regime cols)
+    from sklearn.linear_model import LogisticRegression
+    return LogisticRegression().fit(np.asarray(P), np.asarray(y))
+
+
+def predict_meta(clf, P) -> np.ndarray:
+    return clf.predict_proba(np.asarray(P))[:, 1]
