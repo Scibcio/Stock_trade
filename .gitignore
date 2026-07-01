@@ -21,7 +21,7 @@ __pycache__/
 .pytest_cache/
 
 # Generated model artifacts
-walk_forward_oof.csv
+walk_forward_oof*.csv
 
 # Python bytecode cache
 __pycache__/
