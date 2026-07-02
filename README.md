@@ -1,174 +1,137 @@
 # Stock_trade
 
-Investment-tracking AI to learn market patterns for swing trading.
+A complete, self-running machine-learning system for swing-trading the S&P 500 — from
+data collection, to a diverse two-model ensemble, to daily risk-managed picks that grade
+themselves forward.
 
-**Project stage:** Data foundation **done**; signal layer **scaffolded** (module stubs in
-place) and being built **test-first**. The ML models, ensemble, and dashboard are not
-implemented yet — see the [Roadmap](#roadmap).
+**Status: built, tested, certified, automated.** The full chain (data → features →
+ensemble → strategy → live picks → forward paper-trade) runs end-to-end with 34 passing
+tests and leakage guards at every layer.
 
----
-
-## What it does today
-
-`database.py` builds and maintains a local SQLite database of historical price data
-for the whole S&P 500, ready to train an ML model on later.
-
-- Scrapes the full **S&P 500 (~503 stocks)** from Wikipedia on first run and saves the
-  list to `tickers.csv` (editable afterwards — no code changes needed to add/remove stocks).
-- Downloads **15 years of daily OHLCV** (since 2010) per stock via the `yfinance` API.
-- Also tracks **6 market baselines** for market-wide context (see below).
-- **Incremental:** first run downloads full history (~5-10 min); every run after only
-  fetches the dates you're missing (~60-90 sec).
-- Flags each stock `ml_ready` once it has enough history to train on (~2 years).
-- Logs every run and prints a summary.
+**The honest headline:** the model's edge is **certified real** — it beats 2,000 random
+baselines by ~124σ — but it is **small** (out-of-sample AUC ≈ 0.56), which is exactly
+what an efficient large-cap market allows. The system's real achievement is knowing
+*precisely* what it is. Full story: **[FINDINGS.md](FINDINGS.md)**.
 
 ---
 
-## Project structure
+## How it works
 
 ```
-database.py      DONE   data collection (OHLCV + baselines -> trading.db)
-
-  -- signal layer (scaffolded, being filled in test-first) --
-config.py        shared constants (paths, barriers, SEQ_LENGTH, walk-forward folds)
-features.py      trading.db -> feature table
-labels.py        triple-barrier target (+ trailing-stop variant for phase 2)
-model_xgb.py     Model A: XGBoost on the WIDE feature set (CPU)
-model_lstm.py    Model B: CNN-LSTM on LEAN 60-day sequences (PyTorch)
-ensemble.py      combine both models' probabilities (gate / blend / meta-learner)
-strategy.py      score -> trades (config-driven risk:reward, position sizing)
-pipeline.py      orchestrator: wires the whole signal layer together
+database.py     15yr daily OHLCV for ~500 S&P 500 stocks + 6 market baselines + SEC insider flow
+      |            -> SQLite trading.db
+      v
+features.py     ~30 leakage-tested features (momentum, trend, volatility, macro, regime)
+labels.py       triple-barrier target: +3% before -1% within 10 days (3:1 reward:risk)
+      |
+      +----------------------+
+      v                      v
+model_xgb.py            model_lstm.py
+XGBoost (wide feats)    CNN-LSTM (lean 60-day sequences, PyTorch/GPU)
+      |  P_xgb                |  P_lstm      (measured prediction corr 0.42 = diverse)
+      +----------+-----------+
+                 v
+           ensemble.py     Platt calibration + logistic meta-learner
+                 v
+     threshold_analysis.py  confidence selectivity + bull/sideways/bear regime read
+                 v
+     strategy.py / backtest  fixed-fractional + vol sizing + Monte Carlo risk-of-ruin
+                 v
+     predict_live.py        daily diversified picks (sector cap + regime scaling)
+                 v
+     run_daily.py           the whole cycle, scheduled -> logs + scores paper_trades forward
 ```
 
-The two models are deliberately different (tabular trees vs temporal network) so their
-errors are decorrelated — combining them is more accurate and steadier than either alone.
+Two deliberately different models (tabular trees vs a temporal network) make *different*
+mistakes, so combining them is steadier than either alone. The strategy layer is kept
+separate from the models so risk/reward changes without retraining.
 
 ---
 
 ## Setup
 
-Requires **Python 3.11+**. The virtual environment and database are not in git
-(they're regenerable / too large), so recreate them after cloning:
+Requires **Python 3.11+**. The virtualenv and `trading.db` are gitignored (regenerable /
+too large), so recreate them after cloning:
 
 ```powershell
-# from the Stock_trade folder
 python -m venv .venv
 .venv\Scripts\activate
-pip install pandas requests yfinance pytz lxml
+pip install pandas requests yfinance pytz lxml xgboost scikit-learn scipy pytest
+pip install torch --index-url https://download.pytorch.org/whl/cu128   # GPU build (RTX 50-series)
 ```
 
-Extra libraries are added when their stage arrives: `pytest` for tests, then
-`xgboost` (Model A) and `torch` (Model B). They're lazy-imported, so the pipeline
-imports fine before they're installed.
-
-## Usage
-
-Run after the US market closes (after 4pm ET / ~8pm UK) so the day's candle is final:
+Then build the database (first run downloads ~15yr for 500 stocks, ~5-10 min):
 
 ```powershell
 python database.py
 ```
 
-That single command does everything: creates the DB if needed, refreshes the ticker
-list, downloads any missing data for all stocks and baselines, updates the `ml_ready`
-flags, and prints a summary. Safe to run every day — it never duplicates data.
+---
+
+## Usage
+
+| Command | What it does |
+|---|---|
+| `python database.py` | Refresh `trading.db` with the latest close (incremental, ~60-90s) |
+| `python pipeline.py` | Full 12-fold walk-forward for the XGBoost model → OOF predictions |
+| `python run_lstm.py` | LSTM walk-forward + the XGBoost/LSTM diversity check |
+| `python run_ensemble.py` | Calibrate + combine both models; confirm the ensemble beats either alone |
+| `python baseline_null.py` | **Certify the edge is real** vs random baselines (permutation test) |
+| `python predict_live.py` | Today's diversified, risk-scaled **picks** → logged to `paper_trades` |
+| **`python run_daily.py`** | **The daily cycle:** update data → picks → score matured paper trades |
+
+**Automation:** `run_daily.py` is registered with Windows Task Scheduler (`StockAI_Daily`)
+to run every weekday at 22:00, so the system builds its own forward track record.
+Change/remove it in Task Scheduler or `schtasks /Delete /TN StockAI_Daily`.
 
 ---
 
-## What's in the database (`trading.db`)
+## What's in `trading.db`
 
 | Table | One row per | Holds |
 |---|---|---|
-| `stocks` | ticker | company name, sector, source, `ml_ready` flag |
-| `daily_prices` | ticker + day | OHLCV for each S&P 500 stock |
-| `market_baselines` | symbol + day | OHLCV for the market-context instruments |
-| `run_log` | script run | rows added, errors, duration, DB size |
+| `stocks` | ticker | company, sector, `ml_ready` flag |
+| `daily_prices` | ticker + day | OHLCV |
+| `market_baselines` | symbol + day | OHLCV for SPY / VIX / HYG / TNX / UUP / RSP |
+| `insider_flow` | ticker + day | SEC Form 4 open-market buys/sells |
+| `paper_trades` | pick + day | live picks logged for forward (survivorship-free) scoring |
+| `run_log` | run | rows added, duration, size |
 
-`trading.db` grows to ~220 MB with full history, which is why it's gitignored
-(GitHub's per-file limit is 100 MB). Anyone can rebuild it by running `database.py`.
-
----
-
-## Managing your universe
-
-`tickers.csv` is the editable list of what gets tracked. Columns:
-`ticker, company_name, sector, source`.
-
-- Add a custom ticker (e.g. a new IPO like SpaceX) by adding a row with
-  `source` set to `watchlist` — it survives Wikipedia refreshes.
-- Remove a stock by deleting its row.
-
-## Market baselines
-
-These give the future ML model market-wide context (is the market up? is volatility
-high?). They live in the `BASELINES` dict in `database.py` — add a valid Yahoo Finance
-symbol there and the next run downloads its full history automatically. No other changes
-needed.
-
-| Symbol | Meaning |
-|---|---|
-| `SPY` | S&P 500 ETF (overall market) |
-| `^VIX` | Volatility / "fear" index |
-| `HYG` | High-yield bond ETF (credit sentiment) |
-| `^TNX` | 10-year Treasury yield (rates) |
-| `UUP` | US Dollar bullish fund |
-| `RSP` | S&P 500 equal-weight ETF |
-
-## Configuration
-
-Top of `database.py`:
-
-- `HISTORY_START` — how far back to pull data (default `2010-01-01`).
-- `ML_READY_MIN_ROWS` — minimum daily rows for a stock to count as ML-ready.
-  Default `504` ≈ **2 years** of trading days (a year is ~252 trading days, not 365).
-  Set higher to demand more history; the flag re-computes every run.
-
-Signal-layer constants live in `config.py` (triple-barrier targets, sequence length,
-and the 12 walk-forward folds).
+`tickers.csv` is the editable universe (add a `watchlist` row for a custom ticker).
+Signal-layer constants (barriers, sequence length, 12 walk-forward folds, feature lists)
+live in `config.py`.
 
 ---
 
-## Testing
+## Testing & rigor
 
-This is a quant project, so the bugs don't crash — they quietly produce great-looking
-but fake results. The guiding rule: **a backtest that looks amazing is a leak to hunt,
-not a win to celebrate.** Realistic edges are small.
+Quant bugs don't crash — they quietly produce great-looking but fake results. Guiding
+rule: **a backtest that looks amazing is a leak to hunt, not a win to celebrate.**
 
-Each pipeline stage has a **gate** that must pass before the next is built. We develop
-and test on a small **~15-stock dev universe** first (seconds per run), then scale to
-all ~500. Five things every build must satisfy:
+- **34 tests**, run with `pytest -q`
+- **Leakage guards:** features use past data only; scaler fits on train only per fold;
+  time-based **purged + embargoed** 12-fold walk-forward; sequence models never cross
+  ticker boundaries; a point-in-time test on every forward-looking feature
+- **Edge certified:** `baseline_null.py` shows the model beats the best of 2,000 random
+  baselines on both AUC and top-slice win rate — the edge is signal, not luck
 
-| Goal | How it's verified |
-|---|---|
-| Runs correctly | Unit test per module + a small-universe smoke run |
-| Models combine for real lift | Combined AUC **>** each model alone; predictions are decorrelated; meta-learner trained out-of-fold |
-| No data bias / leakage | Features use **past data only**; scaler fits on **train only** (per fold); time-based walk-forward (never random shuffle); purge gap so a label's forward window can't cross the train/test boundary |
-| Data full but manageable | Per-ticker coverage report; memory/size budget; dev on a subset, then scale |
-| Real understanding, not luck | Beat baselines (coin-flip, majority class, buy-and-hold SPY); consistent across folds/regimes; probability calibration; Monte Carlo significance |
-
-**Known limitation — survivorship bias:** the universe is *today's* S&P 500 (the
-survivors), so delisted/dropped names are missing and backtests are optimistically
-biased. Documented, not yet corrected.
-
-Run the tests (once `tests/` exists):
-
-```powershell
-pip install pytest
-pytest -q
-```
+**Known limitation — survivorship bias:** the universe is *today's* S&P 500, so delisted
+names are missing and every backtest is optimistically biased. This is why the **forward
+paper-trade** (`paper_trades`) exists — it's the only survivorship-free proof, and it's
+accumulating now. See [FINDINGS.md](FINDINGS.md) for the three things survivorship hid.
 
 ---
 
-## Roadmap
+## Status
 
-- [x] Data collection pipeline (S&P 500 OHLCV + market baselines, incremental)
-- [x] ML-ready flagging
-- [x] Signal-layer **scaffold** (module stubs + shared config + walk-forward folds)
-- [ ] `features.py` — port the proven feature maths (test-first, with a leakage test)
-- [ ] `labels.py` — triple-barrier target
-- [ ] **Model A** — XGBoost on the wide feature set
-- [ ] **Model B** — CNN-LSTM (PyTorch) on lean sequences
-- [ ] **Ensemble** — combine both models; confirm it beats each alone
-- [ ] **Strategy + evaluation** — risk:reward presets, port the FYP backtest suite
-- [ ] **Dashboard** — Streamlit UI
-- [ ] **Scheduler** — auto-run daily after market close
+- [x] Data pipeline (500 stocks, 15yr OHLCV, baselines, insider flow)
+- [x] Feature engineering (leakage-tested)
+- [x] Triple-barrier labels
+- [x] XGBoost + CNN-LSTM ensemble (calibrated, diverse)
+- [x] Purged walk-forward + regime/threshold analysis
+- [x] Strategy layer (sizing, sector cap, regime scaling) + Monte Carlo
+- [x] **Edge certified real** (permutation test)
+- [x] Live pick-generator + forward paper-trade
+- [x] Daily automation (scheduled)
+- [ ] **Forward validation** — running now; needs weeks of live data
+- [ ] Dashboard (optional) · survivorship-free backtest (the open frontier)
