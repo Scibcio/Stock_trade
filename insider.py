@@ -78,7 +78,8 @@ def get_form4_filings(cik: int) -> pd.DataFrame:
     recent = _get(SUBMISSIONS_URL.format(cik=cik)).json()["filings"]["recent"]
     df = pd.DataFrame({"form": recent["form"],
                        "filingDate": recent["filingDate"],
-                       "accession": recent["accessionNumber"]})
+                       "accession": recent["accessionNumber"],
+                       "primaryDocument": recent["primaryDocument"]})
     return df[df["form"] == "4"].reset_index(drop=True)
 
 
@@ -105,14 +106,18 @@ def parse_form4_xml(xml_text: str) -> list[dict]:
     return txns
 
 
-def parse_form4(cik: int, accession: str) -> list[dict]:
-    # fetch a filing's ownership XML from EDGAR, then parse it
-    acc = accession.replace("-", "")
-    idx = _get(f"{ARCHIVE.format(cik=cik, acc=acc)}/index.json").json()
+def parse_form4(cik: int, accession: str, primary_doc: str | None = None) -> list[dict]:
+    # fetch a filing's ownership XML and parse it. The raw XML sits at the doc name
+    # WITHOUT the "xslF345.../" render prefix -> 1 request. Fall back to index.json.
+    base = ARCHIVE.format(cik=cik, acc=accession.replace("-", ""))
+    if primary_doc:
+        try:
+            return parse_form4_xml(_get(f"{base}/{primary_doc.rsplit('/', 1)[-1]}").text)
+        except Exception:
+            pass
+    idx = _get(f"{base}/index.json").json()
     xml_name = next((f["name"] for f in idx["directory"]["item"] if f["name"].endswith(".xml")), None)
-    if not xml_name:
-        return []
-    return parse_form4_xml(_get(f"{ARCHIVE.format(cik=cik, acc=acc)}/{xml_name}").text)
+    return parse_form4_xml(_get(f"{base}/{xml_name}").text) if xml_name else []
 
 
 # ----------------------------------
@@ -123,7 +128,7 @@ def collect_insider_daily(cik: int, filings: pd.DataFrame) -> pd.DataFrame:
     # parse each Form 4 and aggregate open-market buys/sells by FILING date (point-in-time)
     recs = []
     for _, row in filings.iterrows():
-        txns = parse_form4(cik, row["accession"])
+        txns = parse_form4(cik, row["accession"], row.get("primaryDocument"))
         buys = [t for t in txns if t["code"] == "P"]
         sells = [t for t in txns if t["code"] == "S"]
         recs.append({"date": row["filingDate"],

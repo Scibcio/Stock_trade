@@ -26,8 +26,12 @@ def main() -> None:
     conn = sqlite3.connect(config.DB_PATH)
     conn.executescript(insider.INSIDER_SCHEMA)
     cikmap = insider.load_cik_map()
+    done = {t for (t,) in conn.execute("SELECT DISTINCT ticker FROM insider_flow")}   # resumable
 
     for i, tkr in enumerate(config.DEV_UNIVERSE, 1):
+        if tkr in done:
+            print(f"  [{i:>2}/{len(config.DEV_UNIVERSE)}] {tkr:<6} already done - skip")
+            continue
         cik = cikmap.get(tkr)
         if not cik:
             print(f"  [{i:>2}/{len(config.DEV_UNIVERSE)}] {tkr:<6} no CIK - skipped")
