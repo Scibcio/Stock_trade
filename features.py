@@ -166,6 +166,14 @@ def _merge_macro(df: pd.DataFrame,
     return df
 
 
+def add_cross_sectional(pooled: pd.DataFrame) -> pd.DataFrame:
+    # percentile rank of each feature WITHIN each date (a stock's standing vs the universe)
+    df = pooled.copy()
+    for col in ("Mom_20", "RSI_14", "Vol_Surge", "Relative_Strength"):
+        df[f"{col}_xrank"] = df.groupby("date")[col].rank(pct=True)
+    return df
+
+
 def load_insider(ticker: str, conn: sqlite3.Connection) -> pd.DataFrame:
     # insider_flow (from insider.py); empty if the table/ticker isn't there yet
     try:

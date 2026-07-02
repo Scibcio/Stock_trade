@@ -45,7 +45,7 @@ PURGE_DAYS  = 14        # calendar days purged before each fold's train_end (cov
 # ----------------------------------
 # INDICATOR WINDOWS  (features.py)
 # ----------------------------------
-SMA_WINDOWS      = [5, 10, 20, 50, 100]
+SMA_WINDOWS      = [5, 10, 20, 50, 100, 200]   # 200 = the stock's own long-term trend
 MOM_WINDOWS      = [5, 10, 20]
 VOL_WINDOWS      = [5, 10, 20]
 ZSCORE_WINDOWS   = [20, 60]
@@ -86,6 +86,11 @@ WIDE_FEATURES = LEAN_FEATURES + [
 # for the lift test; XGBoost only (sparse/intermittent - would pollute the LSTM).
 INSIDER_WINDOW = 20
 INSIDER_FEATURES = ["Insider_Buys_20d", "Insider_Sells_20d", "Has_Insider_Buy"]
+
+# Cross-sectional + own-trend candidates (lift-tested on top of WIDE). Cross-rank =
+# a stock's percentile standing vs the whole universe that day (relative, not absolute).
+CROSS_FEATURES = ["Mom_20_xrank", "RSI_14_xrank", "Vol_Surge_xrank", "Relative_Strength_xrank"]
+NEW_FEATURES = ["SMA_200_Dist"] + CROSS_FEATURES
 
 
 # ----------------------------------
