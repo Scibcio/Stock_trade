@@ -82,6 +82,11 @@ WIDE_FEATURES = LEAN_FEATURES + [
     "ZScore_20", "ZScore_60",
 ]
 
+# Insider-flow features (edge #1, from insider_flow table). Tested ON TOP of WIDE
+# for the lift test; XGBoost only (sparse/intermittent - would pollute the LSTM).
+INSIDER_WINDOW = 20
+INSIDER_FEATURES = ["Insider_Buys_20d", "Insider_Sells_20d", "Has_Insider_Buy"]
+
 
 # ----------------------------------
 # MODELS

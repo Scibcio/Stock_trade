@@ -166,6 +166,39 @@ def _merge_macro(df: pd.DataFrame,
     return df
 
 
+def load_insider(ticker: str, conn: sqlite3.Connection) -> pd.DataFrame:
+    # insider_flow (from insider.py); empty if the table/ticker isn't there yet
+    try:
+        return pd.read_sql_query(
+            "SELECT date, n_buys, n_sells FROM insider_flow WHERE ticker = ? ORDER BY date",
+            conn, params=(ticker,))
+    except Exception:
+        return pd.DataFrame()
+
+
+def merge_insider(df: pd.DataFrame, insider: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add point-in-time insider-flow features (edge #1).
+    A Form 4 filed on day D is only actionable from D+1 (shift +1), then we take
+    trailing INSIDER_WINDOW-day sums (backward -> no look-ahead). 0 where no data.
+    """
+    df = df.copy()
+    if insider is None or insider.empty:
+        df["Insider_Buys_20d"] = 0.0
+        df["Insider_Sells_20d"] = 0.0
+        df["Has_Insider_Buy"] = 0
+        return df
+
+    m = df.merge(insider, on="date", how="left")
+    for c in ("n_buys", "n_sells"):
+        m[c] = m[c].fillna(0.0).shift(1).fillna(0.0)          # known only next session
+    w = config.INSIDER_WINDOW
+    m["Insider_Buys_20d"] = m["n_buys"].rolling(w, min_periods=1).sum()
+    m["Insider_Sells_20d"] = m["n_sells"].rolling(w, min_periods=1).sum()
+    m["Has_Insider_Buy"] = (m["Insider_Buys_20d"] > 0).astype(int)
+    return m.drop(columns=["n_buys", "n_sells"])
+
+
 def build_feature_table(ticker: str, conn: sqlite3.Connection) -> pd.DataFrame:
     # full per-ticker step: load OHLCV + baselines -> compute_features
     df = load_stock(ticker, conn)

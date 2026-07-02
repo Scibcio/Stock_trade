@@ -63,3 +63,18 @@ def test_real_db_smoke():
     conn.close()
     assert len(out) > 0
     assert not out[config.WIDE_FEATURES].isna().any().any()
+
+
+def test_merge_insider_point_in_time():
+    # a Form 4 filed on day D is actionable only from D+1 (shift), with no future leak
+    dates = list(pd.bdate_range("2020-01-01", periods=30).strftime("%Y-%m-%d"))
+    df = pd.DataFrame({"date": dates})
+    ins = pd.DataFrame({"date": [dates[10]], "n_buys": [3], "n_sells": [1]})
+    out = features.merge_insider(df, ins)
+    assert out.loc[out["date"] == dates[10], "Insider_Buys_20d"].iloc[0] == 0   # not on filing day
+    assert out.loc[out["date"] == dates[11], "Insider_Buys_20d"].iloc[0] == 3   # next session
+    # deleting future filings must not change an earlier day's feature
+    part = features.merge_insider(df[df["date"] <= dates[15]], ins[ins["date"] <= dates[15]])
+    d12 = dates[12]
+    assert (out.loc[out["date"] == d12, "Insider_Buys_20d"].iloc[0]
+            == part.loc[part["date"] == d12, "Insider_Buys_20d"].iloc[0])
