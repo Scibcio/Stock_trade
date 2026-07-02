@@ -25,6 +25,8 @@ import threshold_analysis as ta
 
 warnings.filterwarnings("ignore")
 TOP_K = 15
+MAX_PER_SECTOR = 3                                              # diversification cap
+REGIME_EXPOSURE = {"bull": 1.0, "sideways": 0.6, "bear": 0.3}  # gross exposure by regime
 
 PAPER_SCHEMA = """
 CREATE TABLE IF NOT EXISTS paper_trades (
@@ -60,6 +62,10 @@ def build_train_and_latest(conn):
     return pd.concat(train, ignore_index=True), pd.concat(latest, ignore_index=True)
 
 
+def load_sectors(conn) -> dict:
+    return dict(conn.execute("SELECT ticker, sector FROM stocks").fetchall())
+
+
 def main() -> None:
     conn = sqlite3.connect(config.DB_PATH)
     conn.executescript(PAPER_SCHEMA)
@@ -73,12 +79,24 @@ def main() -> None:
     latest = latest[latest["date"] == pick_date].copy()          # only stocks with fresh data
     latest["prob"] = model_xgb.predict_xgb(model, latest[feats].to_numpy("float32"))
     regime = ta.compute_regimes(conn).set_index("date").loc[pick_date, "regime"]
+    latest["sector"] = latest["ticker"].map(load_sectors(conn)).fillna("Unknown")
 
-    picks = latest.sort_values("prob", ascending=False).head(TOP_K).copy()
-    inv = 1.0 / picks["NATR_14"].clip(lower=0.1)                  # vol-targeting: size ~ 1/vol
-    picks["weight"] = inv / inv.sum()
+    # sector-capped selection: no more than MAX_PER_SECTOR names from one sector
+    chosen, per_sector = [], {}
+    for _, r in latest.sort_values("prob", ascending=False).iterrows():
+        if per_sector.get(r["sector"], 0) >= MAX_PER_SECTOR:
+            continue
+        chosen.append(r)
+        per_sector[r["sector"]] = per_sector.get(r["sector"], 0) + 1
+        if len(chosen) >= TOP_K:
+            break
+    picks = pd.DataFrame(chosen)
 
-    # log to paper_trades for forward scoring
+    # vol-target weights, scaled down in weaker regimes (rest stays in cash)
+    exposure = REGIME_EXPOSURE.get(regime, 0.5)
+    inv = 1.0 / picks["NATR_14"].clip(lower=0.1)
+    picks["weight"] = inv / inv.sum() * exposure
+
     for _, r in picks.iterrows():
         conn.execute("INSERT OR IGNORE INTO paper_trades (pick_date, ticker, entry_close, prob, regime, natr) "
                      "VALUES (?,?,?,?,?,?)",
@@ -86,15 +104,17 @@ def main() -> None:
     conn.commit()
     conn.close()
 
-    print("\n" + "=" * 56)
-    print(f"  AI PICKS - {pick_date}   market regime: {regime.upper()}")
-    print("=" * 56)
-    if regime == "bear":
-        print("  ! BEAR regime - model edge is weak here; size DOWN or sit out.\n")
-    print(f"  {'#':>2}  {'ticker':<7}{'conf':>7}{'NATR%':>8}{'weight':>9}   entry")
+    print("\n" + "-" * 60)
+    print(f"  AI PICKS - {pick_date}   regime: {regime.upper()}   exposure: {exposure:.0%}")
+    print("-" * 60)
+    if regime != "bull":
+        print(f"  ! {regime.upper()} regime - edge is weaker; gross exposure scaled to {exposure:.0%}.\n")
+    print(f"  {'#':>2}  {'ticker':<7}{'sector':<24}{'conf':>6}{'wt':>7}   entry")
     for i, (_, r) in enumerate(picks.iterrows(), 1):
-        print(f"  {i:>2}  {r['ticker']:<7}{r['prob']:>7.1%}{r['NATR_14']:>8.1f}{r['weight']:>8.1%}   ${r['close']:.2f}")
-    print("\n  logged to paper_trades -> score forward to prove the edge is real.")
+        print(f"  {i:>2}  {r['ticker']:<7}{str(r['sector'])[:22]:<24}{r['prob']:>6.0%}{r['weight']:>7.1%}   ${r['close']:.2f}")
+    print(f"\n  {len(picks)} picks / {picks['sector'].nunique()} sectors | "
+          f"{picks['weight'].sum():.0%} invested, {1 - picks['weight'].sum():.0%} cash")
+    print("  logged to paper_trades -> score forward to prove the edge is real.")
 
 
 if __name__ == "__main__":
