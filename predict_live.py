@@ -117,5 +117,36 @@ def main() -> None:
     print("  logged to paper_trades -> score forward to prove the edge is real.")
 
 
+def score_paper_trades(conn) -> int:
+    # mark matured open trades win/loss via the triple barrier on forward closes
+    scored = 0
+    for tid, pick_date, ticker, entry in conn.execute(
+            "SELECT id, pick_date, ticker, entry_close FROM paper_trades WHERE status='open'").fetchall():
+        fwd = [r[0] for r in conn.execute(
+            "SELECT close FROM daily_prices WHERE ticker=? AND date>? ORDER BY date LIMIT ?",
+            (ticker, pick_date, config.HOLD_DAYS)).fetchall()]
+        if len(fwd) < config.HOLD_DAYS:
+            continue                                   # not matured yet
+        outcome = "loss"
+        for px in fwd:
+            ret = (px - entry) / entry
+            if ret <= config.STOP_LOSS:
+                break
+            if ret >= config.TAKE_PROFIT:
+                outcome = "win"
+                break
+        conn.execute("UPDATE paper_trades SET status=? WHERE id=?", (outcome, tid))
+        scored += 1
+    conn.commit()
+    return scored
+
+
+def paper_track_record(conn) -> dict:
+    d = dict(conn.execute("SELECT status, COUNT(*) FROM paper_trades GROUP BY status").fetchall())
+    closed = d.get("win", 0) + d.get("loss", 0)
+    return {"open": d.get("open", 0), "win": d.get("win", 0), "loss": d.get("loss", 0),
+            "win_rate": (d.get("win", 0) / closed) if closed else None}
+
+
 if __name__ == "__main__":
     main()
