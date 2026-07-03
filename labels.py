@@ -60,14 +60,35 @@ def add_target(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
 
 
 # ----------------------------------
-# FUTURE: "let winners run" label (phase 2)
+# "LET WINNERS RUN" label (phase 2)
 # ----------------------------------
 
 def trailing_stop_label(df: pd.DataFrame,
                         trail_pct: float,
-                        max_hold: int) -> pd.Series:
+                        max_hold: int,
+                        stop_loss: float = config.STOP_LOSS) -> pd.Series:
     """
-    TODO (phase 2): trailing-stop label so the model can ride large moves
-    (e.g. an IPO that runs 150 -> 300) instead of capping every win at +3%.
+    0/1 label under a TRAILING stop instead of a fixed +TP, so a win can ride a
+    large move (150 -> 300) rather than capping at +3%. From entry we hold an
+    initial stop at `stop_loss`; once price runs up, the stop ratchets to
+    peak * (1 - trail_pct). Exit at the first close through the stop, else at
+    `max_hold`. Label = 1 if that exit is profitable. NaN for the final max_hold
+    rows (incomplete forward window). Close-based, no look-ahead.
     """
-    raise NotImplementedError
+    close = df["close"].to_numpy(dtype=float)
+    n = len(close)
+    out = np.full(n, np.nan)
+
+    for i in range(n - max_hold):
+        entry = close[i]
+        peak = entry
+        exit_ret = (close[i + max_hold] - entry) / entry      # default: time-barrier exit
+        for px in close[i + 1: i + 1 + max_hold]:
+            peak = max(peak, px)
+            stop = max(entry * (1 + stop_loss), peak * (1 - trail_pct))
+            if px <= stop:                                    # trailing / initial stop hit
+                exit_ret = (px - entry) / entry
+                break
+        out[i] = 1.0 if exit_ret > 0 else 0.0
+
+    return pd.Series(out, index=df.index, name="Target_Label")

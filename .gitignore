@@ -22,6 +22,10 @@ __pycache__/
 
 # Generated model artifacts
 walk_forward_oof*.csv
+backtest_*.csv
+
+# Personal testing arena (old-vs-new model faceoff) - never pushed
+faceoff/
 
 # Daily run logs
 logs/

@@ -21,9 +21,25 @@ risk, so this is not optional.
   users see a friendly message, never a stack trace, file path, or SQL error.
 - **No secrets.** The app reads only local files; there are no API keys, tokens, or
   credentials in the code or repo (and `.gitignore` excludes `.env`, the DB, and OOF data).
-- **No dangerous capabilities.** No file uploads, no `eval`/`exec`, no shelling out, no
+- **No dangerous capabilities** *(read-only build)*. No file uploads, no `eval`/`exec`, no
   network calls at request time, and — critically — **no trade execution of any kind.**
 - **Disclaimer on every page.** Educational/research framing, not financial advice.
+
+---
+
+## ⚠️ The Control Panel makes this build LOCAL-ONLY
+
+`dashboard.py` now ships a **Control Panel** (sidebar buttons) that runs the pipeline
+scripts via `subprocess` — `database.py`, `predict_live.py`, `run_daily.py`, `pipeline.py`,
+`baseline_null.py`. This is deliberate: it lets *you* operate the whole system without a
+terminal.
+
+**But it means the app executes code.** That is safe on your own machine (localhost) and
+**must never be exposed to the public internet** — a reachable "run script" button is a
+remote-code-execution surface. Before any public deploy you MUST **delete the entire
+`CONTROL PANEL` section** of `dashboard.py` (and the `run_script` helper) to return to the
+read-only posture below. Also bind Streamlit to localhost only (`--server.address 127.0.0.1`)
+and never port-forward it.
 
 ---
 

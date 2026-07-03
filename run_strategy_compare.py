@@ -27,8 +27,8 @@ import threshold_analysis as ta
 warnings.filterwarnings("ignore")
 
 K = 10
-MAX_PER_SECTOR = 3
-REGIME_EXPOSURE = {"bull": 1.0, "sideways": 0.6, "bear": 0.3}
+MAX_PER_SECTOR = config.MAX_PER_SECTOR               # single definition in config (F2)
+REGIME_EXPOSURE = config.REGIME_EXPOSURE
 TP, SL, RISK = 3.0, -1.0, 0.01                       # risk units + 1% risk/trade
 
 
