@@ -30,7 +30,7 @@ last candle would be incomplete). Does NOT block.
 - The main loop. Goes through every ticker, downloads only the dates we're missing, and saves them.
 Commits every 20 stocks so a crash doesn't lose everything.
 
-- Marks stocks as ml_ready (have >= 1000 rows of data), logs the run stats, and prints a summary.
+- Marks stocks as ml_ready (>= ML_READY_MIN_ROWS = 504 daily rows, ~2 years), logs the run stats, and prints a summary.
 
 
 run() ties all of the above together in order.

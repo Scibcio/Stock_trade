@@ -56,7 +56,7 @@ too large), so recreate them after cloning:
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
-pip install pandas requests yfinance pytz lxml xgboost scikit-learn scipy pytest
+pip install -r requirements.txt        # pandas, yfinance, xgboost, scikit-learn, streamlit, pytest ...
 pip install torch --index-url https://download.pytorch.org/whl/cu128   # GPU build (RTX 50-series)
 ```
 
