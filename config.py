@@ -36,10 +36,30 @@ DEV_UNIVERSE = [
 # ----------------------------------
 # LABELING  (triple barrier - labels.py)
 # ----------------------------------
+# These define the TRAINING TARGET only. Execution exits live in the STRATEGY
+# section below so exit geometry can be tuned without silently changing what
+# the model is trained to rank (U3 retrains the label when geometry is adopted).
 TAKE_PROFIT = 0.03      # +3% upper barrier (a "win")
 STOP_LOSS   = -0.01     # -1% lower barrier (a "loss")
 HOLD_DAYS   = 10        # vertical / time barrier
 PURGE_DAYS  = 14        # calendar days purged before each fold's train_end (covers HOLD_DAYS)
+
+
+# ----------------------------------
+# STRATEGY  (shared by backtest.py + predict_live.py — one definition, F2)
+# ----------------------------------
+TOP_K          = 15     # names per cohort
+MAX_PER_SECTOR = 3      # diversification cap
+COST_PER_TRADE = 0.001  # round-trip cost per position (10 bps): spread + impact on liquid S&P names
+
+# Gross exposure by market regime. Bear = 0.0: fold 9 (2022 bear) OOF AUC was
+# 0.490 — the model cannot rank in bears, so bear exposure is edge-less risk (F3).
+REGIME_EXPOSURE = {"bull": 1.0, "sideways": 0.6, "bear": 0.0}
+
+# Execution exits (what the strategy actually trades — may differ from the label
+# barriers above until the U3 retrain confirms a geometry change end-to-end).
+EXIT_TAKE_PROFIT = TAKE_PROFIT
+EXIT_STOP_LOSS   = STOP_LOSS
 
 
 # ----------------------------------
