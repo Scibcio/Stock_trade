@@ -31,8 +31,7 @@ import numpy as np
 import pandas as pd
 
 import config
-from backtest import (COST_PER_TRADE, MAX_PER_SECTOR, REBALANCE, REGIME_EXPOSURE,
-                      TOP_K, load_signals, simulate, summarize)
+from backtest import COST_PER_TRADE, REBALANCE, load_signals, simulate, summarize
 
 warnings.filterwarnings("ignore")
 
@@ -50,7 +49,7 @@ def _asof(panel_entry, t):
 # EVENT-DRIVEN PORTFOLIO with trailing-stop exits
 # ==================================================
 
-def simulate_trailing(df, prices, signal_col="p_xgb", n_slots=TOP_K,
+def simulate_trailing(df, prices, signal_col="p_xgb", n_slots=config.TOP_K,
                       trail=0.10, max_hold=60, init_stop=config.STOP_LOSS,
                       cost=COST_PER_TRADE):
     panel = {t: (s.index.to_numpy(), s.to_numpy(dtype=float)) for t, s in prices.items()}
@@ -89,7 +88,7 @@ def simulate_trailing(df, prices, signal_col="p_xgb", n_slots=TOP_K,
 
         # --- 2. entries on the rebalance cadence, filling free slots ---
         if i % REBALANCE == 0 and t in by_date:
-            target = int(round(n_slots * REGIME_EXPOSURE.get(regime_of.get(t, "bull"), 0.5)))
+            target = int(round(n_slots * config.REGIME_EXPOSURE.get(regime_of.get(t, "bull"), 0.5)))
             held = {p["ticker"] for p in open_pos}
             sec = {}
             for p in open_pos:
@@ -97,7 +96,7 @@ def simulate_trailing(df, prices, signal_col="p_xgb", n_slots=TOP_K,
             for ticker, sector, close_t in by_date[t]:
                 if len(open_pos) >= target:
                     break
-                if ticker in held or sec.get(sector, 0) >= MAX_PER_SECTOR:
+                if ticker in held or sec.get(sector, 0) >= config.MAX_PER_SECTOR:
                     continue
                 invest = min(equity / n_slots, cash)
                 if invest <= 1e-6:

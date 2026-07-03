@@ -71,7 +71,8 @@ def db_stats() -> dict:
 @st.cache_data(ttl=120)
 def latest_picks() -> pd.DataFrame:
     return _query(
-        "SELECT p.pick_date, p.ticker, s.sector, p.prob, p.natr, p.entry_close, p.regime, p.status "
+        "SELECT p.pick_date, p.ticker, s.sector, p.prob, p.natr, p.entry_close, p.entry_open, "
+        "p.weight, p.regime, p.status "
         "FROM paper_trades p LEFT JOIN stocks s ON p.ticker = s.ticker "
         "WHERE p.pick_date = (SELECT MAX(pick_date) FROM paper_trades) "
         "ORDER BY p.prob DESC LIMIT ?", (MAX_ROWS,))
@@ -82,24 +83,27 @@ def paper_record() -> dict:
     df = _query("SELECT status, COUNT(*) AS n FROM paper_trades GROUP BY status")
     d = dict(zip(df["status"], df["n"])) if not df.empty else {}
     closed = d.get("win", 0) + d.get("loss", 0)
-    return {"open": d.get("open", 0), "win": d.get("win", 0), "loss": d.get("loss", 0),
+    return {"open": d.get("open", 0), "pending": d.get("pending", 0),
+            "win": d.get("win", 0), "loss": d.get("loss", 0),
             "win_rate": (d.get("win", 0) / closed) if closed else None}
 
 
 @st.cache_data(ttl=300)
 def model_perf():
-    if not (OOF_XGB.exists() and OOF_LSTM.exists()):
+    # XGB-only is the live signal (F6); the LSTM CSV enriches the view if present
+    if not OOF_XGB.exists():
         return None
     try:
         from sklearn.metrics import roc_auc_score
-        xgb = pd.read_csv(OOF_XGB)
-        lstm = pd.read_csv(OOF_LSTM)[["date", "ticker", "p_lstm"]]
-        df = xgb.merge(lstm, on=["date", "ticker"], how="inner").dropna()
-        df["blend"] = 0.5 * df["p_xgb"] + 0.5 * df["p_lstm"]
+        df = pd.read_csv(OOF_XGB).dropna()
+        if OOF_LSTM.exists():
+            lstm = pd.read_csv(OOF_LSTM)[["date", "ticker", "p_lstm"]]
+            df = df.merge(lstm, on=["date", "ticker"], how="inner").dropna()
+        sig = df["p_xgb"]
         curve = [{"top % kept": pct,
-                  "win rate %": round(df[df["blend"] >= df["blend"].quantile(1 - pct / 100)]["Target_Label"].mean() * 100, 1)}
+                  "win rate %": round(df[sig >= sig.quantile(1 - pct / 100)]["Target_Label"].mean() * 100, 1)}
                  for pct in (100, 50, 25, 10, 5)]
-        return {"auc": roc_auc_score(df["Target_Label"], df["blend"]),
+        return {"auc": roc_auc_score(df["Target_Label"], sig),
                 "base": df["Target_Label"].mean(), "n": len(df),
                 "curve": pd.DataFrame(curve).set_index("top % kept")}
     except Exception:
@@ -237,11 +241,12 @@ with tab_overview:
 
     st.subheader("Forward paper-trade record")
     st.caption("The survivorship-free proof — fills in as each pick matures (10 trading days).")
-    c = st.columns(4)
-    c[0].metric("Open", rec["open"])
-    c[1].metric("Wins", rec["win"])
-    c[2].metric("Losses", rec["loss"])
-    c[3].metric("Win rate", "—" if rec["win_rate"] is None else f"{rec['win_rate']:.0%}")
+    c = st.columns(5)
+    c[0].metric("Pending", rec["pending"], help="Picked at the close; fills at the next session's open")
+    c[1].metric("Open", rec["open"])
+    c[2].metric("Wins", rec["win"])
+    c[3].metric("Losses", rec["loss"])
+    c[4].metric("Win rate", "—" if rec["win_rate"] is None else f"{rec['win_rate']:.0%}")
 
 with tab_picks:
     picks = latest_picks()
@@ -256,8 +261,9 @@ with tab_picks:
             "Ticker": picks["ticker"].values,
             "Sector": picks["sector"].fillna("—").values,
             "Confidence": [f"{p:.0%}" for p in picks["prob"]],
-            "Volatility": [f"{n:.1f}%" for n in picks["natr"]],
-            "Entry": [f"${e:,.2f}" for e in picks["entry_close"]],
+            "Weight": ["—" if pd.isna(w) else f"{w:.1%}" for w in picks["weight"]],
+            "Signal close": [f"${e:,.2f}" for e in picks["entry_close"]],
+            "Fill (open)": ["pending" if pd.isna(o) else f"${o:,.2f}" for o in picks["entry_open"]],
             "Status": picks["status"].values,
         })
         st.dataframe(table, use_container_width=True, hide_index=True)

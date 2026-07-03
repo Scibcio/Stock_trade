@@ -6,10 +6,12 @@ BACKTEST / SIMULATION  (Phase 6)
 Replays the AI's *out-of-sample* picks day-by-day across history and asks the
 question you actually care about: "if I had traded this, what would have happened?"
 
-For every rebalance date it re-runs the SAME live strategy predict_live.py uses —
-  * rank by probability, sector-cap at MAX_PER_SECTOR, keep the top TOP_K,
-  * size by inverse volatility (1 / NATR), scaled by the regime exposure,
-  * exit each name on the triple barrier (+3% / -1% / 10-day),
+For every rebalance date it runs the SAME code path predict_live.py trades
+(strategy.select_cohort — parity by construction, F8):
+  * rank by probability, sector-cap, top-K, inverse-NATR weights, regime exposure
+    (bear = 0.0 -> all cash, F3),
+  * ENTER AT THE NEXT SESSION'S OPEN (F1) — the signal prints on the close, so
+    that close is untradeable; exits via config.EXIT_* barriers on closes,
   * charge a round-trip transaction cost on every position,
 then compounds the cohorts into an equity curve and reports the real win rate,
 expectancy, drawdown, Sharpe, and a per-year / per-regime breakdown.
@@ -45,17 +47,14 @@ import pandas as pd
 
 import config
 import features
+import strategy
 import threshold_analysis as ta
 
 warnings.filterwarnings("ignore")
 
-REBALANCE = config.HOLD_DAYS                                    # non-overlapping cohorts, one per hold window
-TOP_K = 15                                                     # names per cohort (matches predict_live)
-MAX_PER_SECTOR = 3                                             # diversification cap (matches predict_live)
-REGIME_EXPOSURE = {"bull": 1.0, "sideways": 0.6, "bear": 0.3}  # gross exposure by regime (matches predict_live)
-PERIODS_PER_YEAR = 252 / REBALANCE                            # ~25 cohorts / year, for annualising Sharpe
-COST_PER_TRADE = 0.001                                        # round-trip cost per position (10 bps): spread + impact
-#                                                              # on liquid S&P names at a zero-commission broker
+REBALANCE = config.HOLD_DAYS                                   # non-overlapping cohorts, one per hold window
+PERIODS_PER_YEAR = 252 / REBALANCE                             # ~25 cohorts / year, for annualising Sharpe
+COST_PER_TRADE = config.COST_PER_TRADE                         # single definition in config (F2)
 
 EQUITY_CSV = config.HERE / "backtest_equity.csv"
 TRADES_CSV = config.HERE / "backtest_trades.csv"
@@ -65,25 +64,32 @@ TRADES_CSV = config.HERE / "backtest_trades.csv"
 # REALISED RETURNS  (triple barrier on close, honest gap-through)
 # ==================================================
 
-def realized_return_series(close: np.ndarray,
-                           take_profit: float = config.TAKE_PROFIT,
-                           stop_loss: float = config.STOP_LOSS,
+def realized_return_series(open_: np.ndarray,
+                           close: np.ndarray,
+                           take_profit: float = config.EXIT_TAKE_PROFIT,
+                           stop_loss: float = config.EXIT_STOP_LOSS,
                            hold: int = config.HOLD_DAYS) -> np.ndarray:
     """
-    Per-entry realised % return under the same triple barrier labels.py uses, but
-    returning the actual close return at the exit day (not an assumed barrier fill),
-    so a gap can win >TP or lose <SL — the honest, close-based outcome.
-    NaN for the final `hold` rows (no complete forward window -> untradeable).
+    Per-signal realised % return with HONEST timing (F1): the signal prints on
+    day i's close, so the entry fills at the NEXT session's open (open[i+1]) —
+    day i's close was untradeable. Barriers are checked on closes from the entry
+    session onward; time barrier = close[i+1+hold]. Exit at the actual close
+    (a gap can win >TP or lose <SL). take_profit/stop_loss of None disables that
+    barrier (plain-hold / catastrophe-stop variants in the exit sweep).
+    NaN for the final hold+1 rows (no complete forward window -> untradeable).
     """
     n = len(close)
     out = np.full(n, np.nan)
-    for i in range(n - hold):
-        entry = close[i]
-        r = (close[i + hold] - entry) / entry                  # default: time-barrier (timeout) exit
-        for j in range(i + 1, i + 1 + hold):
+    for i in range(n - hold - 1):
+        entry = open_[i + 1]
+        if not np.isfinite(entry) or entry <= 0:
+            continue
+        r = (close[i + 1 + hold] - entry) / entry              # default: time-barrier (timeout) exit
+        for j in range(i + 1, i + 2 + hold):
             ret = (close[j] - entry) / entry
-            if ret <= stop_loss or ret >= take_profit:         # first barrier touched decides the exit
-                r = ret
+            if ((stop_loss is not None and ret <= stop_loss)
+                    or (take_profit is not None and ret >= take_profit)):
+                r = ret                                        # first barrier touched decides the exit
                 break
         out[i] = r
     return out
@@ -106,8 +112,9 @@ def load_signals(conn) -> pd.DataFrame:
         feat = features.compute_features(features.load_stock(t, conn), baselines)
         if feat.empty:
             continue
-        feat = feat[["date", "close", "NATR_14"]].copy()
-        feat["realized"] = realized_return_series(feat["close"].to_numpy(dtype=float))
+        feat = feat[["date", "open", "close", "NATR_14"]].copy()
+        feat["realized"] = realized_return_series(feat["open"].to_numpy(dtype=float),
+                                                  feat["close"].to_numpy(dtype=float))
         feat["ticker"] = t
         frames.append(feat)
         if n % 50 == 0:
@@ -123,31 +130,13 @@ def load_signals(conn) -> pd.DataFrame:
 
 
 # ==================================================
-# ONE COHORT  (sector-capped top-K, vol-target weights)  — mirrors predict_live
+# ONE COHORT  — the SAME code path predict_live trades (strategy.select_cohort, F8)
 # ==================================================
 
 def pick_cohort(day: pd.DataFrame, signal_col: str, equal_weight: bool = False):
-    chosen, per_sector = [], {}
-    for _, r in day.sort_values(signal_col, ascending=False).iterrows():
-        if per_sector.get(r["sector"], 0) >= MAX_PER_SECTOR:
-            continue
-        chosen.append(r)
-        per_sector[r["sector"]] = per_sector.get(r["sector"], 0) + 1
-        if len(chosen) >= TOP_K:
-            break
-    if not chosen:
+    if day.empty:
         return None
-    picks = pd.DataFrame(chosen)
-    regime = picks["regime"].iloc[0]
-    exposure = REGIME_EXPOSURE.get(regime, 0.5)
-    if equal_weight:
-        w = np.ones(len(picks)) / len(picks)
-    else:
-        inv = 1.0 / picks["NATR_14"].clip(lower=0.1)
-        w = (inv / inv.sum()).to_numpy()
-    picks["weight"] = w * exposure                             # rest of capital sits in cash (0 return)
-    picks["regime_exposure"] = exposure
-    return picks
+    return strategy.select_cohort(day, signal_col, day["regime"].iloc[0], equal_weight)
 
 
 # ==================================================
@@ -161,8 +150,12 @@ def simulate(df: pd.DataFrame, signal_col: str = "p_xgb",
 
     equity, peak, rows, trades = 1.0, 1.0, [], []
     for d in rebal_dates:
-        picks = pick_cohort(df[df["date"] == d], signal_col, equal_weight)
-        if picks is None:
+        day = df[df["date"] == d]
+        picks = pick_cohort(day, signal_col, equal_weight)
+        if picks is None:                                     # bear/empty -> all cash, flat period (F3)
+            if not day.empty:
+                rows.append({"date": d, "regime": day["regime"].iloc[0], "n": 0, "exposure": 0.0,
+                             "cohort_return": 0.0, "equity": equity, "drawdown": equity / peak - 1})
             continue
         net = picks["realized"] - cost                        # each position pays a round-trip cost
         cohort_ret = float((picks["weight"] * net).sum())     # cash portion contributes 0
