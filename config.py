@@ -58,8 +58,12 @@ REGIME_EXPOSURE = {"bull": 1.0, "sideways": 0.6, "bear": 0.0}
 
 # Execution exits (what the strategy actually trades — may differ from the label
 # barriers above until the U3 retrain confirms a geometry change end-to-end).
-EXIT_TAKE_PROFIT = TAKE_PROFIT
-EXIT_STOP_LOSS   = STOP_LOSS
+# Symmetric +/-3% adopted PROVISIONALLY from the next-open exit sweep
+# (run_exit_sweep.py, §2 decision rule): Sharpe 0.52 vs 0.37, total +72% vs +36%,
+# DD within the 1.2x gate. The -1% stop whipsawed out of picks that recover.
+# Must still survive the U3 symmetric-label retrain before it is final.
+EXIT_TAKE_PROFIT = 0.03
+EXIT_STOP_LOSS   = -0.03
 
 
 # ----------------------------------

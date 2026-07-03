@@ -121,20 +121,88 @@ short bottom) so it stops competing with the index's beta.
 
 ---
 
-## What's next
+## Execution honesty — next-open entries (F1, review-panel fix)
 
-Nothing left to *build* for accuracy — the ceiling is reached and the system is automated.
-The one open question is answered by **time**: `run_daily.py` logs and scores `paper_trades`
-every weekday. In a few weeks, that forward, survivorship-free record is the verdict.
+The panel caught the system booking entries at the SAME close the signal was computed
+on — a price that had already printed. Entries now fill at the **next session's open**,
+in the backtest and in the live paper trail (picks log as `pending`, fill next run).
 
-The backtest (`backtest.py`) is now built and adversarially verified — it confirmed the
-edge is real but sub-index long-only. So the highest-value open work is no longer
-feature-hunting; it is **changing the payoff structure**:
+The honesty tax, measured (3:1 exits, XGB-only, 10 bps, bear = cash):
 
-1. **Let winners run** — implement `labels.trailing_stop_label` and re-label/re-train, then
-   re-run the backtest. Removing the +3% cap is the single most likely path to beating
-   buy-and-hold. *(Priority.)*
-2. **Market-neutral overlay** — long top-decile / short bottom-decile so the ranking edge
-   is expressed without fighting the index's beta.
-3. **Survivorship-free backtest** — needs delisted/point-in-time data (the real rigor
-   frontier); until then the forward paper-trade is the honest verdict.
+| Entry timing | Total 2014–26 | Sharpe |
+|---|---|---|
+| Signal-day close (untradeable) | +77% | 0.60 |
+| **Next-session open (honest)** | **+36%** | **0.37** |
+
+Half the old headline return was the untradeable-close artifact. Every number in this
+journal from here on is next-open. *(Also from here on: bear regime = 100% cash — fold-9
+bear AUC was 0.490, the model cannot rank in bears, so bear exposure was edge-less risk.)*
+
+---
+
+## Exit geometry — the −1% stop was the bottleneck (§2 study, re-run honest)
+
+Same picks, same costs, next-open entries; only the exit rule varies (`run_exit_sweep.py`):
+
+| Exit rule | Net-positive % | Net/trade | Total | CAGR | MaxDD | Sharpe | Verdict |
+|---|---|---|---|---|---|---|---|
+| 3:1 (+3/−1) — old | 40.0% | +0.17% | +36% | +2.6% | −17.4% | 0.37 | baseline |
+| **Symmetric ±3%** | **53.7%** | **+0.32%** | **+72%** | **+4.7%** | −20.3% | **0.52** | **ADOPTED (provisional)** |
+| Symmetric ±2% | 53.6% | +0.20% | +52% | +3.6% | −23.6% | 0.47 | rejected (fails DD gate) |
+| Plain 10d hold, −15% cat-stop | 54.2% | +1.17% | +482% | +15.9% | −36.1% | 0.81 | fails DD gate; U3 candidate |
+| SPY buy & hold | — | — | +322% | — | −24.9% | 0.86 | benchmark |
+
+The −1% stop whipsawed out of picks that recover: the picks carry positive 10-day drift
+and the wide symmetric stop lets it accrue. `EXIT_STOP_LOSS = −0.03` is adopted
+**provisionally** — it must survive the U3 symmetric-label retrain. The plain-hold row is
+the most survivorship-inflated number in the project (no delistings in the data — the
+exact events stops exist for); it stays a U3 candidate, not an adoption.
+
+Caveats on record: ranker still trained on the 3:1 label; survivorship flatters wide
+stops most; wider stop ≈ 3× risk per position at equal weight; breakeven at ±3% is
+~50%+costs (54% clears it, but the margin is thin — the paper trial monitors it).
+
+---
+
+## The hidden beta tilt (panel discovery — the mechanism behind several findings)
+
+Measured on our own OOF picks: the top-15 book runs **β ≈ 1.62** vs SPY (bottom-15:
+β ≈ 0.55). The label P(+3% before −1% in 10d) mechanically rewards high-beta names.
+This one mechanism explains: the bear-market AUC collapse (high-beta longs are what dies
+in bears), why a "market-neutral" long/short book came out at net β ≈ +1.08 (not neutral),
+and why SPY-plus-overlay blends acted as hidden leverage. Queued work: **U8** (de-beta the
+label: ATR-scaled barriers or residual-return target) then **U7** (true beta-matched
+hedging). Until then, every long-only comparison vs SPY partially measures *beta*, not
+selection.
+
+---
+
+## Rejected strategies (tested, not vibes)
+
+The kill list. Every future experiment that dies lands here with its numbers.
+
+| Idea | Result | Why it died |
+|---|---|---|
+| LSTM in the live path | top-5% win 45.7% (XGB) vs 43.2% (blend) | dilutes the selective slice — the only slice traded |
+| Tight symmetric exits (±1–2%) | Sharpe 0.34–0.47 | eaten by costs + noise |
+| Model + 5-day-reversal combined rank | Sharpe 0.46 vs 0.71 alone | the signals fight |
+| Naive long/short (unhedged legs) | net β +1.08, corr 0.63 to SPY | "market-neutral" in name only — revisit after U7 |
+| Naive SPY + MN overlay ("portable alpha") | Sharpe falls to 0.82/0.77, DD −39%/−54% | hidden leverage, not alpha |
+| SPY 200MA trend-timing standalone | Sharpe 0.80, lags SPY | defensive tool, not a return engine |
+| Top-5 concentration (raw) | +1226% but −47% DD | unlivable drawdown — position count is a risk dial (U10) |
+| Bear-regime trading at 0.3× | fold-9 AUC 0.490 | no ranking skill in bears — exposure is now 0 |
+
+---
+
+## What's next (updated priority order, per the review panel)
+
+**U1** earnings blackout filter → **U2** trailing-label retrain (`run_trail_label.py`,
+ready to run) → **U3** exit finalization (incl. the plain-hold candidate, on next-open
+entries) → **U8** de-beta the label → **U7** true beta-neutralization → **U9**
+core–satellite mode (50/50 SPY+strategy tested at Sharpe 0.92, DD −18.2% — beats SPY's
+0.86 via the 0.49 correlation) → U5 meta-labeling → U10 concentration ladder → U4
+learning-to-rank → U6 point-in-time universe → U11 (this registry, continuous).
+
+Then Phase 3: Alpaca paper-trading go-live (owner action required: create the paper
+account + `.env` keys). The forward record — `run_daily.py` logging and scoring
+`paper_trades` every weekday — remains the only clean verdict.
