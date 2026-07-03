@@ -23,6 +23,7 @@ import warnings
 import pandas as pd
 
 import config
+import earnings
 import features
 import labels
 import model_xgb
@@ -146,6 +147,15 @@ def main() -> None:
     latest["prob"] = model_xgb.predict_xgb(model, latest[feats].to_numpy("float32"))
     regime = ta.compute_regimes(conn).set_index("date").loc[pick_date, "regime"]
     latest["sector"] = latest["ticker"].map(load_sectors(conn)).fillna("Unknown")
+
+    earnings.ensure_schema(conn)                                 # U1: earnings blackout -
+    earnings.refresh(conn, latest["ticker"].tolist())            # incremental, cheap when current
+    blocked = earnings.blackout_tickers(conn, pick_date)
+    n_blocked = latest["ticker"].isin(blocked).sum()
+    latest = latest[~latest["ticker"].isin(blocked)]
+    if n_blocked:
+        print(f"\n  earnings blackout: {n_blocked} candidates report within "
+              f"{config.EARNINGS_BLACKOUT} sessions - excluded.")
 
     picks = strategy.select_cohort(latest, "prob", regime)       # F8: the backtested code path
     exposure = config.REGIME_EXPOSURE.get(regime, 0.5)
