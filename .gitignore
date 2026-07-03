@@ -2,6 +2,12 @@
 # Stock_trade - .gitignore
 # ----------------------------------
 
+# Secrets - NEVER committed (Alpaca paper API keys)
+.env
+
+# Broker kill switch (local operational state)
+HALT
+
 # Database files
 trading.db
 *.db

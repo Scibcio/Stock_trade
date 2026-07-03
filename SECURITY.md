@@ -69,6 +69,21 @@ and never port-forward it.
 
 ---
 
+## The paper broker (Phase 3) — paper-only by construction
+
+`broker_alpaca.py` is the ONLY file that talks to a broker, and it cannot reach a
+live account: it hard-fails unless `APCA_PAPER=true`, unless the key has the paper
+`PK` prefix (live keys are `AK`), and unless the SDK client resolves to
+`paper-api.alpaca.markets`. Keys live only in `.env` (gitignored, never logged,
+never shown in the dashboard). Safety rails: a `HALT` file blocks all NEW orders
+(never exits — the kill switch must not trap positions), a hard per-order notional
+cap, Alpaca's $1 minimum respected, deterministic client-order ids make
+resubmission idempotent, and 3-try backoff on transient API errors. The dashboard
+reads broker state from the database only — it makes no API calls and has no order
+buttons. **There is no live-money code path; adding one is out of scope, forever.**
+
+---
+
 ## What this app deliberately will NOT do
 
 No writes · no code execution · no file uploads · no external requests per view · no secrets ·

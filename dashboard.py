@@ -147,6 +147,16 @@ def backtest_data():
     }
 
 
+@st.cache_data(ttl=120)
+def alpaca_live():
+    # written by paper_trader during the nightly run - the dashboard never
+    # touches the broker API itself (read-only by construction)
+    state = _query("SELECT ts, equity, spy_value, n_sleeve FROM alpaca_state ORDER BY ts")
+    fills = _query("SELECT filled_at, symbol, side, price, slippage_bps FROM alpaca_fills "
+                   "ORDER BY filled_at DESC LIMIT ?", (MAX_ROWS,))
+    return None if state.empty else {"state": state, "fills": fills}
+
+
 @st.cache_data(ttl=60)
 def latest_log():
     logs = sorted(LOG_DIR.glob("daily_*.log")) if LOG_DIR.exists() else []
@@ -216,8 +226,8 @@ if not DB_PATH.exists():
     st.info("No database yet. Click **📥 Update data only** in the sidebar to build it.")
     st.stop()
 
-tab_overview, tab_picks, tab_backtest, tab_model, tab_logs = st.tabs(
-    ["📊 Overview", "🎯 Picks", "📉 Backtest", "📈 Model", "📜 Run log"])
+tab_overview, tab_picks, tab_backtest, tab_model, tab_live, tab_logs = st.tabs(
+    ["📊 Overview", "🎯 Picks", "📉 Backtest", "📈 Model", "🤖 Live paper", "📜 Run log"])
 
 with tab_overview:
     stats, perf, rec = db_stats(), model_perf(), paper_record()
@@ -332,6 +342,29 @@ with tab_model:
         st.line_chart(perf["curve"])
         st.caption(f"Base win rate {perf['base']:.0%}. The top 5% by confidence win far more — "
                    "the edge lives in *being selective*, not in raw accuracy.")
+
+with tab_live:
+    live = alpaca_live()
+    if not live:
+        st.info("No Alpaca paper account connected yet. Copy `.env.example` → `.env`, paste your "
+                "**paper** API keys, and the nightly run takes it from there. (Setup: README Phase 3.)")
+    else:
+        st.subheader("Alpaca paper account — the survivorship-free verdict, live")
+        st.caption("Demo money only. Fills are the record's truth; slippage vs the signal close "
+                   "feeds Gate B (median must stay < 15 bps).")
+        latest = live["state"].iloc[-1]
+        c = st.columns(4)
+        c[0].metric("Account equity", f"${latest['equity']:,.0f}")
+        c[1].metric("SPY core", f"${latest['spy_value']:,.0f}",
+                    help=f"Core–satellite mode: {(1 - 0.25):.0%} SPY / 25% strategy sleeve")
+        c[2].metric("Sleeve positions", int(latest["n_sleeve"]))
+        med = live["fills"]["slippage_bps"].median() if len(live["fills"]) else None
+        c[3].metric("Median slippage", "—" if med is None or pd.isna(med) else f"{med:+.0f} bps",
+                    help="Fill price vs signal close. Gate B: < 15 bps")
+        if len(live["state"]) > 1:
+            st.line_chart(live["state"].set_index("ts")["equity"], height=260)
+        st.caption("Recent fills")
+        st.dataframe(live["fills"], use_container_width=True, hide_index=True)
 
 with tab_logs:
     lg = latest_log()
