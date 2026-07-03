@@ -192,6 +192,39 @@ evidence.
 
 ---
 
+## U3 — exit geometry FINALIZED (and the AUC lesson, twice)
+
+**Part 1 — symmetric-label retrain.** Teaching the model the ±3% geometry it now
+trades produced a certified, *higher* pooled AUC — and a *worse* portfolio:
+
+| Ranker (same ±3% exits, next-open) | OOF AUC | Pos% | Total | MaxDD | Sharpe |
+|---|---|---|---|---|---|
+| 3:1-trained (current) | 0.561 (certified) | 53.7% | **+72%** | −20.3% | **0.52** |
+| Sym-trained (U3) | **0.591 (certified, +186σ)** | 52.6% | +31% | −24.5% | 0.28 |
+
+Paired with U2 (AUC *down* → book *up*), this is the same lesson from both sides:
+**pooled AUC is not the objective — the top-15 book is.** The symmetric label asks
+an easier 50/50 question (base rate 41%), but the 3:1 label's asymmetric question
+("up 3% before down even 1%") selects the sharp, immediate momentum a top-slice
+book actually monetises. Sym-trained ranker: rejected, kill-listed. *(Also strong
+support for U4: optimise/evaluate on top-K precision, not pooled metrics.)*
+
+**Part 2 — the exit matrix (all on honest next-open, certified 3:1 ranker):**
+
+| Exit | Total | MaxDD | Sharpe | DD gate (≤1.2× current) | Verdict |
+|---|---|---|---|---|---|
+| 3:1 (+3/−1) | +36% | −17.4% | 0.37 | — | superseded |
+| **Symmetric ±3%** | +72% | −20.3% | 0.52 | pass | **FINAL** |
+| Trailing 20%/90d | +228% | −25.9% | 0.74 | **fail** (−24.4% limit) | aggressive-mode candidate, post-U8/U6 only |
+| Plain hold, −15% cat | +482% | −36.1% | 0.81 | **fail** | most survivorship-inflated; shelved |
+
+**Adopted: symmetric ±3% exits + 3:1-trained ranker.** The uncapped exits' returns
+are real *in this survivor universe* but fail the drawdown gate — and survivorship
+flatters them most. Revisit only after U8 (de-beta) and/or U6 (point-in-time
+universe) can honestly price their risk.
+
+---
+
 ## The hidden beta tilt (panel discovery — the mechanism behind several findings)
 
 Measured on our own OOF picks: the top-15 book runs **β ≈ 1.62** vs SPY (bottom-15:
@@ -220,6 +253,7 @@ The kill list. Every future experiment that dies lands here with its numbers.
 | Top-5 concentration (raw) | +1226% but −47% DD | unlivable drawdown — position count is a risk dial (U10) |
 | Bear-regime trading at 0.3× | fold-9 AUC 0.490 | no ranking skill in bears — exposure is now 0 |
 | Trailing-label retrain (20%/90d) | OOF AUC 0.4934, −10σ vs null | 90d outcomes unforecastable; its Sharpe 0.98 was a low-vol tilt, not skill (→ U8) |
+| Symmetric-label retrain (±3%) | AUC 0.591 certified, but book +31%/Sharpe 0.28 | higher pooled AUC ≠ better top-15 book; the 3:1 label's asymmetry IS the selection edge |
 
 ---
 

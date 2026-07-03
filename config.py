@@ -60,12 +60,12 @@ REGIME_EXPOSURE = {"bull": 1.0, "sideways": 0.6, "bear": 0.0}
 # TRADING SESSIONS — a stop-based hold through earnings is unrankable gap risk.
 EARNINGS_BLACKOUT = 5
 
-# Execution exits (what the strategy actually trades — may differ from the label
-# barriers above until the U3 retrain confirms a geometry change end-to-end).
-# Symmetric +/-3% adopted PROVISIONALLY from the next-open exit sweep
-# (run_exit_sweep.py, §2 decision rule): Sharpe 0.52 vs 0.37, total +72% vs +36%,
-# DD within the 1.2x gate. The -1% stop whipsawed out of picks that recover.
-# Must still survive the U3 symmetric-label retrain before it is final.
+# Execution exits — FINALIZED by U3 (see FINDINGS "Exit geometry, finalized"):
+# symmetric +/-3% exits with the 3:1-TRAINED ranker. The sym-label retrain
+# scored a higher pooled AUC (0.591 certified) but a WORSE book (+31%/0.28 vs
+# +72%/0.52) — pooled AUC is not the objective, the top-slice book is. The
+# trailing and plain-hold candidates beat this on return but fail the max-DD
+# gate (and are the most survivorship-inflated exits). Label stays 3:1.
 EXIT_TAKE_PROFIT = 0.03
 EXIT_STOP_LOSS   = -0.03
 
