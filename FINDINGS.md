@@ -238,6 +238,34 @@ selection.
 
 ---
 
+## U8 — de-beta the label: REJECTED (and the edge's true nature exposed)
+
+Three beta/vol-normalised targets vs the current label, dev universe, purged
+walk-forward (`run_debeta.py`):
+
+| Label | Base rate | Pooled AUC | Bear (fold-9) AUC | Top-5% β | Top-5% NATR |
+|---|---|---|---|---|---|
+| **3:1 fixed-% (current)** | 31.6% | **0.5714** | 0.5046 | 1.15 | 3.72 |
+| ±2×ATR (handoff U8a) | 30.8% | 0.5261 | 0.5003 | 0.88 | 1.89 |
+| +1.5/−0.5×ATR (asym) | 33.7% | 0.5068 | 0.4719 | 0.94 | 2.55 |
+| Residual r−β·r_SPY (U8b) | 52.0% | 0.5075 | 0.4572 | 0.66 | 2.21 |
+
+The de-beta'd labels achieve exactly what they promise — the top-slice beta tilt
+drops to 0.66–0.94 — **and the edge dies with it** (AUC collapses to ~0.51; the
+bear fold gets *worse*, not better). Acceptance criteria failed on every variant.
+
+**The uncomfortable, valuable conclusion:** the model's edge is not "selection
+skill that beta pollutes" — a large share of the forecastable structure **is**
+the beta/vol payoff itself (which high-octane names are about to get paid for
+their octane). You cannot label it away. Consequences: (1) beta management moves
+to the **portfolio layer** — U7's hedge sizing on the certified signal, and the
+core–satellite blend (U9), are the honest tools; (2) expectations for bear-market
+ranking stay at zero (bear = cash is correct); (3) the survivorship caveat bites
+harder — a beta-driven edge is flattered most by a survivor universe, and the
+forward paper record remains the only clean verdict.
+
+---
+
 ## Rejected strategies (tested, not vibes)
 
 The kill list. Every future experiment that dies lands here with its numbers.
@@ -254,6 +282,7 @@ The kill list. Every future experiment that dies lands here with its numbers.
 | Bear-regime trading at 0.3× | fold-9 AUC 0.490 | no ranking skill in bears — exposure is now 0 |
 | Trailing-label retrain (20%/90d) | OOF AUC 0.4934, −10σ vs null | 90d outcomes unforecastable; its Sharpe 0.98 was a low-vol tilt, not skill (→ U8) |
 | Symmetric-label retrain (±3%) | AUC 0.591 certified, but book +31%/Sharpe 0.28 | higher pooled AUC ≠ better top-15 book; the 3:1 label's asymmetry IS the selection edge |
+| De-beta'd labels (±2×ATR, asym-ATR, residual) | AUC 0.51-0.53, bear fold worse | removing beta from the label removes the edge — beta management belongs to the portfolio layer (U7/U9) |
 
 ---
 
