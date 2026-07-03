@@ -22,6 +22,8 @@ __pycache__/
 
 # Generated model artifacts
 walk_forward_oof*.csv
+backtest_equity.csv
+backtest_trades.csv
 
 # Daily run logs
 logs/

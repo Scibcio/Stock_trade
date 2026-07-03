@@ -1,0 +1,15 @@
+# Streamlit config — clean, high-contrast, readable theme for local use.
+# (For a PUBLIC deploy, also set [client] showErrorDetails = false — see SECURITY.md.)
+
+[theme]
+base = "light"
+primaryColor = "#2563eb"          # buttons / links / accents (blue)
+backgroundColor = "#ffffff"       # page background
+secondaryBackgroundColor = "#f1f5f9"  # sidebar / cards (light slate)
+textColor = "#0f172a"             # near-black text = strong contrast
+font = "sans serif"
+
+[server]
+headless = false                  # auto-open the browser when you launch
+runOnSave = true                  # auto-reload when you edit the file
+address = "127.0.0.1"             # localhost only — never expose this build publicly

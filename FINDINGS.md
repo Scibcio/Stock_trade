@@ -72,14 +72,51 @@ risk management. Only forward, out-of-universe data can — which is why the pap
 
 ---
 
+## The full-strategy backtest — a real edge that still loses to the index
+
+`backtest.py` replays the deployable strategy: every 10 trading days form the same
+sector-capped, vol-weighted, regime-scaled top-15 book `predict_live` would, exit on the
+triple barrier, compound the cohorts. Net of 0.1% round-trip costs, 2014–2026:
+
+| Signal | Win% | Net/trade | PF | Total | Sharpe | Max DD |
+|---|---|---|---|---|---|---|
+| **LIVE (XGB only)** | 41.1% | +0.24% | 1.13 | **+76%** | 0.59 | −21.5% |
+| Blend (XGB+LSTM) | 40.9% | +0.23% | 1.13 | +80% | 0.64 | −26.1% |
+| **SPY buy-and-hold** | — | — | — | **+322%** | **0.86** | −24.9% |
+
+Adversarially verified by a 5-agent review (leakage, exit math, portfolio accounting all
+verified clean; two real corrections applied afterwards — rank by **XGB-only** to match
+live, and compute SPY's **own** Sharpe/drawdown). The corrected verdict:
+
+- **The per-trade edge is real** — +0.24% net, PF 1.13, 41% win at a 3:1 barrier (breakeven
+  25%). Positive in expectation, after costs.
+- **But the strategy loses to the index** — +76% vs SPY's +322%, and Sharpe 0.59 vs 0.86.
+  The slightly shallower drawdown is a cash-holding artifact (~18% avg cash), not skill.
+- **The LSTM adds nothing** — the blend barely moves return and *worsens* drawdown. XGB-only
+  is the honest, lean choice; live is right to ignore the LSTM. (Bonus: `merge_insider` in
+  `predict_live` is dead code — the model trains on `WIDE_FEATURES`, which excludes it.)
+
+**Why it loses:** the +3% barrier caps every winner while 2014–2026 was a historic bull —
+you cannot out-compound buy-and-hold by clipping your right tail. The edge is in *ranking*
+(which stock over 10 days), not in beating beta long-only.
+
+**The one lever that could change this:** stop capping winners. `labels.trailing_stop_label`
+(phase 2, stubbed) lets winners run instead of exiting at +3% — the single highest-value
+experiment left. Alternatively, express the ranking edge **market-neutral** (long top /
+short bottom) so it stops competing with the index's beta.
+
+---
+
 ## The complete, honest characterization
 
-> **Real. Small. Data-limited. Certified. Forward-pending.**
+> **Real. Small. Data-limited. Certified. Index-lagging. Forward-pending.**
 
 - **Real** — beats 2,000 nulls, no leakage (34 tests, purged walk-forward).
 - **Small** — AUC ~0.56; the edge lives in *selectivity* (top-slice), not raw accuracy.
 - **Data-limited** — four experiments hit the same ceiling; more features won't help.
 - **Certified** — the signal is genuine, not curve-fitting.
+- **Index-lagging** — long-only, it beats random but not buy-and-hold; the +3% cap is the
+  bottleneck, not the signal.
 - **Forward-pending** — magnitude and risk-control value can only be proven live.
 
 ---
@@ -90,7 +127,14 @@ Nothing left to *build* for accuracy — the ceiling is reached and the system i
 The one open question is answered by **time**: `run_daily.py` logs and scores `paper_trades`
 every weekday. In a few weeks, that forward, survivorship-free record is the verdict.
 
-Open frontiers (optional, honest expectations): a **survivorship-free backtest** (needs
-delisted/point-in-time data — the real rigor frontier), a **fundamentals/DCF** signal
-family (orthogonal but likely another horizon-mismatch), or a **dashboard** to watch the
-forward record fill in.
+The backtest (`backtest.py`) is now built and adversarially verified — it confirmed the
+edge is real but sub-index long-only. So the highest-value open work is no longer
+feature-hunting; it is **changing the payoff structure**:
+
+1. **Let winners run** — implement `labels.trailing_stop_label` and re-label/re-train, then
+   re-run the backtest. Removing the +3% cap is the single most likely path to beating
+   buy-and-hold. *(Priority.)*
+2. **Market-neutral overlay** — long top-decile / short bottom-decile so the ranking edge
+   is expressed without fighting the index's beta.
+3. **Survivorship-free backtest** — needs delisted/point-in-time data (the real rigor
+   frontier); until then the forward paper-trade is the honest verdict.
