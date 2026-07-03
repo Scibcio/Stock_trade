@@ -164,6 +164,34 @@ stops most; wider stop ≈ 3× risk per position at equal weight; breakeven at �
 
 ---
 
+## U2 — the trailing-label retrain (run, measured, NOT adopted)
+
+Retrained XGBoost directly on the let-winners-run target (`trailing_stop_label`,
+trail 20% / 90d; base rate 16.0%) and replayed the event-driven trailing book on
+honest next-open entries:
+
+| Variant (next-open, 10 bps) | Trades | Win% | Total | CAGR | MaxDD | Sharpe |
+|---|---|---|---|---|---|---|
+| OLD ranker (3:1 label) + trailing exits | 1,522 | 12.7% | **+228%** | +10.4% | −25.9% | 0.74 |
+| NEW ranker (trailing label) + trailing exits | 1,129 | 20.3% | +137% | +7.5% | **−14.1%** | **0.98** |
+| SPY buy & hold | — | — | +323% | +12.8% | −33.7% | 0.78 |
+
+**The catch:** the trailing-label model's OOF AUC is **0.4934 — NOT CERTIFIED**
+(−10σ *below* a 1,000-draw shuffled null; base rate 15.2%). A 90-day trailing
+outcome is unforecastable from technical features — the horizon-decay finding,
+confirmed a third time. So where does Sharpe 0.98 / −14.1% DD come from? **Not
+forecasting.** The trailing label is mechanically easier for smooth, low-volatility
+names, so the model learned a *defensive low-vol tilt* — risk shaping, not skill.
+
+**Decision:** NOT adopted (fails the U2 rule — loses to the old ranker on total —
+and rests on an uncertified signal). Two things survive it: (1) **OLD ranker +
+trailing exits** (+228%, Sharpe 0.74) goes forward as a U3 exit candidate — the
+*certified* ranker with uncapped exits; (2) the accidental proof that
+vol-normalised targets reshape the book — exactly the U8 hypothesis, now with
+evidence.
+
+---
+
 ## The hidden beta tilt (panel discovery — the mechanism behind several findings)
 
 Measured on our own OOF picks: the top-15 book runs **β ≈ 1.62** vs SPY (bottom-15:
@@ -191,6 +219,7 @@ The kill list. Every future experiment that dies lands here with its numbers.
 | SPY 200MA trend-timing standalone | Sharpe 0.80, lags SPY | defensive tool, not a return engine |
 | Top-5 concentration (raw) | +1226% but −47% DD | unlivable drawdown — position count is a risk dial (U10) |
 | Bear-regime trading at 0.3× | fold-9 AUC 0.490 | no ranking skill in bears — exposure is now 0 |
+| Trailing-label retrain (20%/90d) | OOF AUC 0.4934, −10σ vs null | 90d outcomes unforecastable; its Sharpe 0.98 was a low-vol tilt, not skill (→ U8) |
 
 ---
 
