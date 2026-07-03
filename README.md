@@ -1,12 +1,14 @@
 # Stock_trade
 
 A complete, self-running machine-learning system for swing-trading the S&P 500 — from
-data collection, to a diverse two-model ensemble, to daily risk-managed picks that grade
+data collection, to a certified XGBoost ranker, to daily risk-managed picks that grade
 themselves forward.
 
+**📖 Full documentation — every file, every concept: [DOCS.md](DOCS.md)**
+
 **Status: built, tested, certified, automated.** The full chain (data → features →
-ensemble → strategy → live picks → forward paper-trade) runs end-to-end with 34 passing
-tests and leakage guards at every layer.
+model → strategy → live picks → forward paper-trade) runs end-to-end with 48 passing
+tests, CI on every push, and leakage guards at every layer.
 
 **The honest headline:** the model's edge is **certified real** — it beats 2,000 random
 baselines by ~124σ — but it is **small** (out-of-sample AUC ≈ 0.56), which is exactly
