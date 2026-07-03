@@ -10,7 +10,8 @@ the fix — replace the fixed +TP with a TRAILING STOP that lets winners ride.
 Variable, longer holds mean positions overlap, so the 10-day non-overlapping cohort model
 no longer applies. This is a proper EVENT-DRIVEN portfolio:
   * up to N concurrent slots, sized 1/N of equity, marked-to-market daily,
-  * enter on the same rebalance cadence (top probability, sector-capped, regime-scaled slots),
+  * decide on the rebalance cadence (top probability, sector-capped, regime-scaled slots)
+    and FILL AT THE NEXT SESSION'S OPEN (F1 honesty - the decision close is untradeable),
   * exit each name on a trailing stop: initial stop at -1%, ratcheting to peak*(1-trail)
     once in profit, or a hard time-barrier at max_hold,
   * round-trip transaction cost per position.
@@ -52,13 +53,17 @@ def _asof(panel_entry, t):
 def simulate_trailing(df, prices, signal_col="p_xgb", n_slots=config.TOP_K,
                       trail=0.10, max_hold=60, init_stop=config.STOP_LOSS,
                       cost=COST_PER_TRADE):
-    panel = {t: (s.index.to_numpy(), s.to_numpy(dtype=float)) for t, s in prices.items()}
+    panel = {t: (p.index.to_numpy(), p["close"].to_numpy(dtype=float),
+                 p["open"].to_numpy(dtype=float)) for t, p in prices.items()}
     dates = sorted(df["date"].unique())
-    by_date = {d: g.sort_values(signal_col, ascending=False)[["ticker", "sector", "close"]].to_numpy()
+    by_date = {d: g.sort_values(signal_col, ascending=False)[["ticker", "sector"]].to_numpy()
                for d, g in df.groupby("date")}
     regime_of = dict(zip(df["date"], df["regime"]))
 
     open_pos, cash, trades, curve = [], 1.0, [], []
+    scheduled = {}                                             # fill_date -> entries decided earlier
+    pending = set()                                            # tickers awaiting their fill
+    equity = 1.0
 
     def close_out(p, px, exit_date):
         nonlocal cash
@@ -68,10 +73,23 @@ def simulate_trailing(df, prices, signal_col="p_xgb", n_slots=config.TOP_K,
                        "return": px / p["entry"] * (1 - cost) - 1})   # net return, same haircut as cash
 
     for i, t in enumerate(dates):
-        # --- 1. process exits + mark-to-market ---
+        # --- 1. fill entries scheduled for today at TODAY'S OPEN (F1 honesty:
+        #        the decision-day close was untradeable) ---
+        for e in scheduled.pop(t, []):
+            pending.discard(e["ticker"])
+            invest = min(equity / n_slots, cash)               # equity as of yesterday's marks
+            if invest <= 1e-6:
+                continue
+            cash -= invest
+            open_pos.append({"ticker": e["ticker"], "sector": e["sector"],
+                             "entry": e["open"], "peak": e["open"], "invested": invest,
+                             "days": 0, "entry_date": t})
+
+        # --- 2. exits + mark-to-market on today's close (a new position's first
+        #        check is its own entry-session close, matching the label) ---
         still, mtm = [], 0.0
         for p in open_pos:
-            px = _asof(panel[p["ticker"]], t)
+            px = _asof(panel[p["ticker"]][:2], t)
             if np.isnan(px):
                 still.append(p)
                 continue
@@ -86,33 +104,37 @@ def simulate_trailing(df, prices, signal_col="p_xgb", n_slots=config.TOP_K,
         open_pos = still
         equity = cash + mtm
 
-        # --- 2. entries on the rebalance cadence, filling free slots ---
+        # --- 3. decisions on the rebalance cadence: rank at today's close,
+        #        schedule each fill for the ticker's NEXT session open ---
         if i % REBALANCE == 0 and t in by_date:
             target = int(round(n_slots * config.REGIME_EXPOSURE.get(regime_of.get(t, "bull"), 0.5)))
-            held = {p["ticker"] for p in open_pos}
+            held = {p["ticker"] for p in open_pos} | pending
             sec = {}
             for p in open_pos:
                 sec[p["sector"]] = sec.get(p["sector"], 0) + 1
-            for ticker, sector, close_t in by_date[t]:
-                if len(open_pos) >= target:
+            n_book = len(open_pos) + len(pending)
+            for ticker, sector in by_date[t]:
+                if n_book >= target:
                     break
                 if ticker in held or sec.get(sector, 0) >= config.MAX_PER_SECTOR:
                     continue
-                invest = min(equity / n_slots, cash)
-                if invest <= 1e-6:
-                    break
-                cash -= invest
-                open_pos.append({"ticker": ticker, "entry": float(close_t), "peak": float(close_t),
-                                 "invested": invest, "days": 0, "sector": sector, "entry_date": t})
+                tdates, _, topens = panel[ticker]
+                j = np.searchsorted(tdates, t, side="right")   # first bar strictly after t
+                if j >= len(tdates) or not np.isfinite(topens[j]) or topens[j] <= 0:
+                    continue
+                scheduled.setdefault(tdates[j], []).append(
+                    {"ticker": ticker, "sector": sector, "open": float(topens[j])})
+                pending.add(ticker)
                 held.add(ticker)
                 sec[sector] = sec.get(sector, 0) + 1
+                n_book += 1
 
         curve.append({"date": t, "equity": equity, "cash": cash, "open": len(open_pos)})
 
-    # --- 3. close anything still open at the last price ---
+    # --- 4. close anything still open at the last price ---
     last = dates[-1]
     for p in open_pos:
-        px = _asof(panel[p["ticker"]], last)
+        px = _asof(panel[p["ticker"]][:2], last)
         close_out(p, px if not np.isnan(px) else p["entry"], last)
     return pd.DataFrame(curve), pd.DataFrame(trades), cash
 

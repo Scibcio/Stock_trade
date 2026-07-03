@@ -121,8 +121,8 @@ def load_signals(conn) -> pd.DataFrame:
             print(f"  features {n}/{len(tickers)}")
 
     market = pd.concat(frames, ignore_index=True)
-    prices = {t: g.set_index("date")["close"].sort_index()   # full forward path per ticker (for trailing exits)
-              for t, g in market.groupby("ticker")}
+    prices = {t: g.set_index("date")[["open", "close"]].sort_index()   # full path per ticker
+              for t, g in market.groupby("ticker")}                    # (trailing exits + next-open fills)
     df = oof.merge(market, on=["date", "ticker"], how="inner")
     df["sector"] = df["ticker"].map(sectors).fillna("Unknown")
     df = df.dropna(subset=["realized", "NATR_14"]).sort_values("date").reset_index(drop=True)
