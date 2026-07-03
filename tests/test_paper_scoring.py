@@ -1,9 +1,12 @@
 """
 Gate test for the forward paper-trade scorer (predict_live.score_paper_trades).
+Exit barriers are pinned so the test checks MECHANICS, independent of whatever
+geometry config.EXIT_* currently adopts.
 """
 
 import sqlite3
 
+import config
 import predict_live
 
 
@@ -15,7 +18,9 @@ def _add_trade(conn, ticker, entry, closes):
                      (ticker, f"2020-01-{i + 1:02d}", px))
 
 
-def test_scorer_marks_win_loss_and_leaves_open():
+def test_scorer_marks_win_loss_and_leaves_open(monkeypatch):
+    monkeypatch.setattr(config, "EXIT_TAKE_PROFIT", 0.03)
+    monkeypatch.setattr(config, "EXIT_STOP_LOSS", -0.01)
     conn = sqlite3.connect(":memory:")
     conn.executescript(predict_live.PAPER_SCHEMA)
     conn.execute("CREATE TABLE daily_prices (ticker TEXT, date TEXT, close REAL)")
