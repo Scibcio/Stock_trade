@@ -50,10 +50,18 @@ def compute_regimes(conn) -> pd.DataFrame:
 
 
 def load_blended_oof(conn) -> pd.DataFrame:
+    # LSTM is a research artifact, not a live dependency (F6): if its OOF file
+    # is absent, fall back to XGB-only (blend = p_xgb) so the hot path never
+    # needs torch. Evidence: top-5% win rate 45.7% (XGB) vs 43.2% (blend).
     xgb = pd.read_csv(config.OOF_PATH)
-    lstm = pd.read_csv(LSTM_OOF)[["date", "ticker", "p_lstm"]]
-    df = xgb.merge(lstm, on=["date", "ticker"], how="inner").dropna()
-    df["blend"] = 0.5 * df["p_xgb"] + 0.5 * df["p_lstm"]
+    if LSTM_OOF.exists():
+        lstm = pd.read_csv(LSTM_OOF)[["date", "ticker", "p_lstm"]]
+        df = xgb.merge(lstm, on=["date", "ticker"], how="inner").dropna()
+        df["blend"] = 0.5 * df["p_xgb"] + 0.5 * df["p_lstm"]
+    else:
+        df = xgb.dropna().copy()
+        df["p_lstm"] = np.nan
+        df["blend"] = df["p_xgb"]
     return df.merge(compute_regimes(conn), on="date", how="left")
 
 
