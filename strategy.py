@@ -1,22 +1,60 @@
 """
 --------------------------------------------
-SIGNAL PIPELINE - STRATEGY / BACKTEST (Phase 5)
+SIGNAL PIPELINE - STRATEGY LAYER
 --------------------------------------------
 
-Turns the combined signal into a tradeable strategy and stress-tests it.
-Selection = the top-K most-confident signals PER DAY (a real, capacity-limited
-book, ~K concurrent positions). Each trade resolves via its triple-barrier label
-(+reward_risk risk-units on a win, -1 on a loss), fixed-fractional sizing, costs.
+The ONE place cohort selection lives (F8): sector-capped top-K by probability,
+inverse-NATR weights, regime-scaled gross exposure. backtest.py and
+predict_live.py both import select_cohort, so the simulation and the live
+system agree by construction, not by discipline.
 
-Because our labels are OUTCOMES (not price paths), we validate the EDGE and the
-RISK OF RUIN via Monte Carlo - not a false-precision equity curve. Kept separate
-from the models so risk / selectivity change without retraining.
+Below it: the original Monte-Carlo edge/risk-of-ruin study (research artifact).
 """
 
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+
+import config
+
+
+# ----------------------------------
+# COHORT SELECTION  (shared: backtest.py + predict_live.py)
+# ----------------------------------
+
+def select_cohort(day: pd.DataFrame, prob_col: str, regime: str,
+                  equal_weight: bool = False) -> pd.DataFrame | None:
+    """
+    One day's tradeable book from candidate rows (needs prob_col, sector, NATR_14).
+    Top-K by prob_col with a per-sector cap; weights = inverse NATR normalised to
+    the regime's gross exposure (rest is cash). None if regime exposure is 0 or
+    no candidates (bear = stay in cash, F3).
+    """
+    exposure = config.REGIME_EXPOSURE.get(regime, 0.5)
+    if exposure <= 0 or day.empty:
+        return None
+
+    chosen, per_sector = [], {}
+    for _, r in day.sort_values(prob_col, ascending=False).iterrows():
+        if per_sector.get(r["sector"], 0) >= config.MAX_PER_SECTOR:
+            continue
+        chosen.append(r)
+        per_sector[r["sector"]] = per_sector.get(r["sector"], 0) + 1
+        if len(chosen) >= config.TOP_K:
+            break
+    if not chosen:
+        return None
+
+    picks = pd.DataFrame(chosen)
+    if equal_weight:
+        w = np.ones(len(picks)) / len(picks)
+    else:
+        inv = 1.0 / picks["NATR_14"].clip(lower=0.1)
+        w = (inv / inv.sum()).to_numpy()
+    picks["weight"] = w * exposure
+    picks["regime_exposure"] = exposure
+    return picks
 
 
 @dataclass
