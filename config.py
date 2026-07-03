@@ -56,9 +56,11 @@ COST_PER_TRADE = 0.001  # round-trip cost per position (10 bps): spread + impact
 # 0.490 — the model cannot rank in bears, so bear exposure is edge-less risk (F3).
 REGIME_EXPOSURE = {"bull": 1.0, "sideways": 0.6, "bear": 0.0}
 
-# Earnings blackout (U1): skip any candidate that reports within this many
-# TRADING SESSIONS — a stop-based hold through earnings is unrankable gap risk.
-EARNINGS_BLACKOUT = 5
+# Earnings blackout (U1): tested and REJECTED — the loss tail is NOT
+# earnings-driven (p5/worst identical with the filter on) and blocking the
+# ~7.7% of candidates near earnings cost 21pp of return (see FINDINGS).
+# 0 = disabled; the earnings_dates table stays for research.
+EARNINGS_BLACKOUT = 0
 
 # Execution exits — FINALIZED by U3 (see FINDINGS "Exit geometry, finalized"):
 # symmetric +/-3% exits with the 3:1-TRAINED ranker. The sym-label retrain

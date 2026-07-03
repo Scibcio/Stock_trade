@@ -238,6 +238,26 @@ selection.
 
 ---
 
+## U1 — earnings blackout: REJECTED (the tail isn't earnings)
+
+Hypothesis: earnings gaps through the stop fatten the loss tail — skip candidates
+reporting within 5 sessions. Data: 43,538 announcement dates, all 500 tickers,
+1999→2026. Replay of the adopted book with/without the filter (`run_earnings_impact.py`):
+
+| Book | Trades | Pos% | Net/tr | p5 | Worst | Total | MaxDD | Sharpe |
+|---|---|---|---|---|---|---|---|---|
+| No filter (current) | 3,750 | 53.7% | +0.32% | −6.5% | −28.6% | **+72%** | −20.3% | **0.52** |
+| Earnings blackout | 3,750 | 53.5% | +0.26% | −6.5% | −28.6% | +51% | −18.9% | 0.41 |
+
+The tail metrics — the entire point of the filter — **did not move** (p5 and the
+worst trade identical). Meanwhile blocking the ~7.7% of candidates near earnings
+cost 21pp of total return: the model evidently profits from pre-earnings momentum
+names, and the cohort refills with weaker picks. Rejected; `EARNINGS_BLACKOUT = 0`
+(the switch and the data stay for research). *Point-in-time caveat: historical
+dates are as-known-today — a proxy; live blackout dates would be known in advance.*
+
+---
+
 ## U8 — de-beta the label: REJECTED (and the edge's true nature exposed)
 
 Three beta/vol-normalised targets vs the current label, dev universe, purged
@@ -283,6 +303,7 @@ The kill list. Every future experiment that dies lands here with its numbers.
 | Trailing-label retrain (20%/90d) | OOF AUC 0.4934, −10σ vs null | 90d outcomes unforecastable; its Sharpe 0.98 was a low-vol tilt, not skill (→ U8) |
 | Symmetric-label retrain (±3%) | AUC 0.591 certified, but book +31%/Sharpe 0.28 | higher pooled AUC ≠ better top-15 book; the 3:1 label's asymmetry IS the selection edge |
 | De-beta'd labels (±2×ATR, asym-ATR, residual) | AUC 0.51-0.53, bear fold worse | removing beta from the label removes the edge — beta management belongs to the portfolio layer (U7/U9) |
+| Earnings blackout (5 sessions) | p5/worst unchanged, total −21pp, Sharpe −0.11 | the loss tail isn't earnings; the filter blocked profitable pre-earnings momentum |
 
 ---
 

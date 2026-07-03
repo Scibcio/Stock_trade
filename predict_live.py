@@ -148,14 +148,15 @@ def main() -> None:
     regime = ta.compute_regimes(conn).set_index("date").loc[pick_date, "regime"]
     latest["sector"] = latest["ticker"].map(load_sectors(conn)).fillna("Unknown")
 
-    earnings.ensure_schema(conn)                                 # U1: earnings blackout -
-    earnings.refresh(conn, latest["ticker"].tolist())            # incremental, cheap when current
-    blocked = earnings.blackout_tickers(conn, pick_date)
-    n_blocked = latest["ticker"].isin(blocked).sum()
-    latest = latest[~latest["ticker"].isin(blocked)]
-    if n_blocked:
-        print(f"\n  earnings blackout: {n_blocked} candidates report within "
-              f"{config.EARNINGS_BLACKOUT} sessions - excluded.")
+    if config.EARNINGS_BLACKOUT > 0:                             # U1: tested, rejected (FINDINGS) -
+        earnings.ensure_schema(conn)                             # kept as a config switch
+        earnings.refresh(conn, latest["ticker"].tolist())
+        blocked = earnings.blackout_tickers(conn, pick_date)
+        n_blocked = latest["ticker"].isin(blocked).sum()
+        latest = latest[~latest["ticker"].isin(blocked)]
+        if n_blocked:
+            print(f"\n  earnings blackout: {n_blocked} candidates report within "
+                  f"{config.EARNINGS_BLACKOUT} sessions - excluded.")
 
     picks = strategy.select_cohort(latest, "prob", regime)       # F8: the backtested code path
     exposure = config.REGIME_EXPOSURE.get(regime, 0.5)
