@@ -38,6 +38,16 @@ class BrokerSafetyError(RuntimeError):
     """Refusing an unsafe broker configuration or order."""
 
 
+DUPLICATE = "duplicate-order"          # sentinel: order was already submitted (idempotent no-op)
+
+
+def _paper_endpoint_ok(client) -> bool:
+    # alpaca-py stores the base URL as an Enum whose str() is its NAME
+    # ("BaseURL.TRADING_PAPER"), so compare the .value (the actual URL)
+    base = getattr(client, "_base_url", None)
+    return PAPER_HOST in str(getattr(base, "value", base) or PAPER_HOST)
+
+
 def _load_env() -> dict:
     from dotenv import load_dotenv
     load_dotenv(HERE / ".env")
@@ -63,8 +73,7 @@ def get_client():
 
     from alpaca.trading.client import TradingClient
     client = TradingClient(env["key"], env["secret"], paper=True)
-    base = str(getattr(client, "_base_url", PAPER_HOST))
-    if PAPER_HOST not in base:                                  # belt and braces
+    if not _paper_endpoint_ok(client):                          # belt and braces
         raise BrokerSafetyError(f"client endpoint is not {PAPER_HOST} - refusing")
     return client
 
@@ -120,12 +129,48 @@ def submit_notional(client, symbol: str, notional: float, side: str, order_id: s
     req = MarketOrderRequest(symbol=symbol, notional=round(notional, 2),
                              side=OrderSide.BUY if side == "buy" else OrderSide.SELL,
                              time_in_force=TimeInForce.DAY, client_order_id=order_id)
-    return _retry(lambda: client.submit_order(req))
+    try:
+        return _retry(lambda: client.submit_order(req))
+    except BrokerSafetyError:
+        raise
+    except Exception as e:                                      # resubmission = broker-side no-op
+        msg = str(e).lower()
+        if "client_order_id" in msg or "duplicate" in msg:
+            return DUPLICATE
+        raise
 
 
 def submit_entry(client, symbol: str, notional: float, order_id: str):
     # a cohort entry = notional market BUY (see submit_notional)
     return submit_notional(client, symbol, notional, "buy", order_id)
+
+
+def submit_qty_buy(client, symbol: str, qty: int, est_price: float, order_id: str):
+    """
+    Whole-share market BUY for NON-FRACTIONABLE assets (Alpaca rejects notional
+    orders on those). Same rails: HALT, caps, duplicate no-op.
+    """
+    if halted():
+        print(f"  HALT file present - {symbol} entry blocked")
+        return None
+    est = qty * est_price
+    if qty < 1 or est < config.MIN_ORDER_NOTIONAL:
+        return None
+    if est > config.MAX_ORDER_NOTIONAL:
+        raise BrokerSafetyError(f"{symbol}: ~${est:,.2f} exceeds MAX_ORDER_NOTIONAL")
+
+    from alpaca.trading.enums import OrderSide, TimeInForce
+    from alpaca.trading.requests import MarketOrderRequest
+    req = MarketOrderRequest(symbol=symbol, qty=qty, side=OrderSide.BUY,
+                             time_in_force=TimeInForce.DAY, client_order_id=order_id)
+    try:
+        return _retry(lambda: client.submit_order(req))
+    except BrokerSafetyError:
+        raise
+    except Exception as e:
+        if "client_order_id" in str(e).lower() or "duplicate" in str(e).lower():
+            return DUPLICATE
+        raise
 
 
 def close_symbol(client, symbol: str):

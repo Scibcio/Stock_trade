@@ -40,6 +40,28 @@ def test_refuses_live_looking_key(monkeypatch):
         broker.get_client()
 
 
+def test_endpoint_check_reads_enum_value():
+    # alpaca-py's _base_url is an Enum whose str() is the NAME, not the URL -
+    # the check must read .value (this refused a real paper account once)
+    class _Enum:
+        value = "https://paper-api.alpaca.markets"
+        def __str__(self):
+            return "BaseURL.TRADING_PAPER"
+
+    class _Client:
+        _base_url = _Enum()
+
+    assert broker._paper_endpoint_ok(_Client())
+
+    class _LiveEnum:
+        value = "https://api.alpaca.markets"
+
+    class _LiveClient:
+        _base_url = _LiveEnum()
+
+    assert not broker._paper_endpoint_ok(_LiveClient())
+
+
 # ----------------------------------
 # A4 - HALT kill switch + notional caps
 # ----------------------------------
@@ -89,6 +111,55 @@ def test_satellite_sleeve_budget(monkeypatch):
 # ----------------------------------
 # A5 - reconcile writes REAL fills into the record
 # ----------------------------------
+
+def test_duplicate_order_id_is_noop(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "HALT_FILE", tmp_path / "HALT")
+
+    class _DupClient:
+        def submit_order(self, req):
+            raise RuntimeError("client_order_id must be unique")
+
+    assert broker.submit_notional(_DupClient(), "AAPL", 100, "buy", "x") == broker.DUPLICATE
+
+
+def test_submit_cohort_marks_and_isolates(monkeypatch):
+    # the marker is submitted_at (never entry_open) and one bad symbol
+    # doesn't block the rest - the two bugs the adversarial review caught
+    conn = sqlite3.connect(":memory:")
+    predict_live.migrate(conn)
+    conn.execute("CREATE TABLE daily_prices (ticker TEXT, date TEXT, open REAL, close REAL)")
+    for t, status in (("GOOD", "pending"), ("BAD", "pending"), ("BOOT", "open")):
+        conn.execute("INSERT INTO paper_trades (pick_date, ticker, status, cohort_id, weight, "
+                     "entry_open) VALUES ('2026-07-02', ?, ?, '2026-07-02', 0.06, ?)",
+                     (t, status, 100.0 if status == "open" else None))
+    monkeypatch.setattr(paper_trader, "sleeve_budget", lambda c: 2500.0)
+
+    def fake_entry(client, symbol, notional, order_id):
+        if symbol == "BAD":
+            raise RuntimeError("asset not tradable")
+        return {"ok": symbol}
+    monkeypatch.setattr(paper_trader.broker, "submit_entry", fake_entry)
+    monkeypatch.setattr(paper_trader.broker, "halted", lambda: False)
+
+    assert paper_trader._submit_cohort(conn, object()) == 2      # GOOD + BOOT (bootstrap)
+    marks = dict(conn.execute("SELECT ticker, submitted_at IS NOT NULL "
+                              "FROM paper_trades").fetchall())
+    assert marks == {"GOOD": 1, "BOOT": 1, "BAD": 0}             # BAD retries tomorrow
+    conn.close()
+
+
+def test_stale_pending_expires():
+    conn = sqlite3.connect(":memory:")
+    predict_live.migrate(conn)
+    conn.execute("CREATE TABLE daily_prices (ticker TEXT, date TEXT, open REAL, close REAL)")
+    conn.execute("INSERT INTO paper_trades (pick_date, ticker, status) "
+                 "VALUES ('2026-01-01', 'GHOST', 'pending')")
+    for i in range(2, 15):                                       # 13 sessions pass, no fill
+        conn.execute("INSERT INTO daily_prices VALUES ('AAA', ?, 1, 1)", (f"2026-01-{i:02d}",))
+    assert predict_live.expire_stale_pending(conn) == 1
+    assert conn.execute("SELECT status FROM paper_trades").fetchone()[0] == "dead"
+    conn.close()
+
 
 def test_reconcile_applies_fill_price(monkeypatch):
     conn = sqlite3.connect(":memory:")
