@@ -243,6 +243,32 @@ universe) can honestly price their risk.
 
 ---
 
+## Cadence — one book / 10 sessions is the sweet spot (faster REJECTED)
+
+Does entering more often (staggered overlapping books) beat one book per 10
+sessions? Same capital, same ±3% exit, same names — only the entry cadence
+changes; K=round(10/N) overlapping books, 15·K slots, net of 10 bps
+(`run_cadence_sweep.py`, event-driven engine):
+
+| Cadence | Slots | Trades | Total | MaxDD | Sharpe |
+|---|---|---|---|---|---|
+| **1 book / 10 sessions (current)** | 15 | 3,474 | **+70%** | −24.6% | **0.50** |
+| new book every 5 sessions | 30 | 11,098 | −10% | −30.8% | −0.02 |
+| new book every 2 sessions | 75 | 36,024 | +63% | −21.5% | 0.38 |
+| new book every session (old daily) | 150 | 74,181 | +58% | −24.1% | 0.36 |
+
+The current cadence wins on Sharpe **and** return. Faster cadences run 3–21× the
+turnover for the same-or-worse result — the cost drag beats any signal-freshness
+gain, and capital is already fully deployed for the whole hold, so entering more
+often just splits the same money thinner. Confirms the panel's F5 decision with
+fresh evidence, and vindicates dropping the old daily-overlapping design.
+*(Caveat: the every-5 row is a non-monotonic outlier — treat exact fast-cadence
+magnitudes with caution; the direction, "faster is not better," is unambiguous.)*
+The current-cadence figure (+70%/0.50) reproduces the official cohort backtest
+(+72%/0.52), cross-validating the engine.
+
+---
+
 ## The hidden beta tilt (panel discovery — the mechanism behind several findings)
 
 Measured on our own OOF picks: the top-15 book runs **β ≈ 1.62** vs SPY (bottom-15:
@@ -322,6 +348,7 @@ The kill list. Every future experiment that dies lands here with its numbers.
 | Symmetric-label retrain (±3%) | AUC 0.591 certified, but book +31%/Sharpe 0.28 | higher pooled AUC ≠ better top-15 book; the 3:1 label's asymmetry IS the selection edge |
 | De-beta'd labels (±2×ATR, asym-ATR, residual) | AUC 0.51-0.53, bear fold worse | removing beta from the label removes the edge — beta management belongs to the portfolio layer (U7/U9) |
 | Earnings blackout (5 sessions) | p5/worst unchanged, total −21pp, Sharpe −0.11 | the loss tail isn't earnings; the filter blocked profitable pre-earnings momentum |
+| Faster cadence (every 1/2/5 sessions) | Sharpe 0.36–0.38 vs 0.50, 3–21× turnover | same capital split thinner; churn cost beats signal freshness — 10-session cadence kept |
 
 ---
 

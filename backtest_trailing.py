@@ -52,7 +52,12 @@ def _asof(panel_entry, t):
 
 def simulate_trailing(df, prices, signal_col="p_xgb", n_slots=config.TOP_K,
                       trail=0.10, max_hold=60, init_stop=config.STOP_LOSS,
-                      cost=COST_PER_TRADE):
+                      cost=COST_PER_TRADE, take_profit=None, entry_every=None,
+                      sector_cap=None):
+    # take_profit / entry_every / sector_cap generalize the engine for the
+    # cadence sweep (run_cadence_sweep.py). Defaults preserve trailing behaviour.
+    entry_every = entry_every or REBALANCE
+    sector_cap = sector_cap or config.MAX_PER_SECTOR
     panel = {t: (p.index.to_numpy(), p["close"].to_numpy(dtype=float),
                  p["open"].to_numpy(dtype=float)) for t, p in prices.items()}
     dates = sorted(df["date"].unique())
@@ -96,7 +101,8 @@ def simulate_trailing(df, prices, signal_col="p_xgb", n_slots=config.TOP_K,
             p["peak"] = max(p["peak"], px)
             p["days"] += 1
             stop = max(p["entry"] * (1 + init_stop), p["peak"] * (1 - trail))
-            if px <= stop or p["days"] >= max_hold:
+            hit_tp = take_profit is not None and px >= p["entry"] * (1 + take_profit)
+            if px <= stop or hit_tp or p["days"] >= max_hold:
                 close_out(p, px, t)
             else:
                 still.append(p)
@@ -106,7 +112,7 @@ def simulate_trailing(df, prices, signal_col="p_xgb", n_slots=config.TOP_K,
 
         # --- 3. decisions on the rebalance cadence: rank at today's close,
         #        schedule each fill for the ticker's NEXT session open ---
-        if i % REBALANCE == 0 and t in by_date:
+        if i % entry_every == 0 and t in by_date:
             target = int(round(n_slots * config.REGIME_EXPOSURE.get(regime_of.get(t, "bull"), 0.5)))
             held = {p["ticker"] for p in open_pos} | pending
             sec = {}
@@ -116,7 +122,7 @@ def simulate_trailing(df, prices, signal_col="p_xgb", n_slots=config.TOP_K,
             for ticker, sector in by_date[t]:
                 if n_book >= target:
                     break
-                if ticker in held or sec.get(sector, 0) >= config.MAX_PER_SECTOR:
+                if ticker in held or sec.get(sector, 0) >= sector_cap:
                     continue
                 tdates, _, topens = panel[ticker]
                 j = np.searchsorted(tdates, t, side="right")   # first bar strictly after t
