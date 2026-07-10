@@ -2,7 +2,15 @@
 
 Read-only investigation per `CLAUDE_CODE_PROMPT_SPY_AUDIT.md` (Stages 1–2).
 **No code was changed.** Every claim carries file:line, DB rows, or live Alpaca
-API responses, pulled 2026-07-10 from paper account PA3J9LJP5ME3.
+API responses, pulled 2026-07-10 (morning) from paper account PA3J9LJP5ME3.
+
+> **Independently re-verified** (2026-07-10) by two adversarial read-only
+> reviewers. Every Stage-1 and Stage-2 verdict below HELD under re-derivation.
+> Their four corrections are folded in inline and marked **[rev]**: the empty
+> slippage table is structural not just cancellation-caused; F-A's cause is
+> unproven (could be a manual Cancel-All); exit-side slippage is *not* measured;
+> and remediation-fix-1 must use fresh order ids. The universe lens (H1) could
+> not be re-run (session limit), but its direct DB/id evidence is unambiguous.
 
 Note on the audit's context block: the live system is XGBoost-only (the
 CNN-LSTM/ensemble is a research artifact, see FINDINGS.md/F6) and there is no
@@ -77,10 +85,14 @@ FINDINGS.md ("The hidden beta tilt", U8) — per the audit brief, not re-derived
   and `_mirror_exits` closes the broker position
   ([paper_trader.py:94-113](paper_trader.py)). This matches the *verified
   backtest semantics* (close-based barriers), which bracket legs would not.
-- **Honest caveat the audit is right about:** between nightly runs there is no
-  live stop. An intraday gap through −3% exits at the *next open after the
-  crossing close*, not at −3%. The backtest books the crossing close; the gap
-  between the two is measured slippage (Gate B input), not hidden.
+- **Honest caveat:** between nightly runs there is no live stop. An intraday gap
+  through −3% exits at the *next open after the crossing close*, not at −3%. The
+  backtest books the crossing close; the difference is real execution slippage.
+  **[rev]** This exit-side gap is currently **NOT measured** — `reconcile` only
+  matches BUY fills ([paper_trader.py:80](paper_trader.py)) and exits go out via
+  `close_position` with broker-generated ids it can't match, so `alpaca_fills`
+  can only ever hold entries. Measurable from Alpaca order history; no code does
+  it yet (remediation 5).
 
 ### 2. HALT file → **CONFIRMED (live test, this audit)**
 
@@ -98,38 +110,55 @@ is hardcoded and the endpoint enum is verified
 flips, run live: `APCA_PAPER=false` → `BrokerSafetyError` raised;
 live-style `AK…` key → `BrokerSafetyError` raised. Both are raises, not logs.
 
-### 4. HOLD_DAYS time-exit → **CONFIRMED in code; first live exercise ~2026-07-16**
+### 4. HOLD_DAYS time-exit → **CONFIRMED in code; first live exercise ~2026-07-20 [rev]**
 
 `score_paper_trades` times out every position at the HOLD_DAYS window's last
 close ([predict_live.py:222](predict_live.py)); scored rows are closed at the
 broker by `_mirror_exits`; unfillable picks are retired by
-`expire_stale_pending` ([predict_live.py:205](predict_live.py)). The 07-02
-cohort matures around 07-16 — the first live round-trip proof is pending.
+`expire_stale_pending` ([predict_live.py:205](predict_live.py)). **[rev]** The
+07-02 cohort's guaranteed time barrier lands ~**07-20** (11 forward sessions,
+minus the 07-03 holiday), not 07-16 — earlier only if a ±3% barrier fires first.
 
-### 5. Slippage → **CONFIRMED implemented / INCONCLUSIVE live (zero datapoints — see F-A)**
+### 5. Slippage → **CONFIRMED implemented (entries only) / no live data — structurally, not just F-A [rev]**
 
-`reconcile` writes fill-vs-signal-close slippage per trade into
-`alpaca_fills.slippage_bps` ([paper_trader.py:65-92](paper_trader.py); gate
-test `test_reconcile_applies_fill_price`). Live table: **empty** — because the
-entry batch it would have measured never filled (F-A below). Gate B remains
-unmeasurable until cohort 2 fills.
+`reconcile` writes entry fill-vs-signal-close slippage into
+`alpaca_fills.slippage_bps` ([paper_trader.py:65-92](paper_trader.py); gate test
+`test_reconcile_applies_fill_price`). Live table: **empty**. **[rev]** Two
+independent reasons, not one: (a) it only writes into `status='pending'` rows,
+but cohort 1 was inserted as legacy `open`/`entry_open=NULL` rows (see F-A), so
+they were never reconcilable *regardless of the cancellation*; (b) even on a
+clean cohort it records **entry** slippage only. Gate B slippage remains
+unmeasured until cohort 2 fills AND exit slippage is added (remediation 5).
 
 ---
 
 ## NEW FINDINGS (outside the audit's list — the real problems)
 
-### F-A — The 2026-07-04 order batch was CANCELED and never resubmitted → broker book is missing cohort 1 · **CONFIRMED, HIGH**
+### F-A — Cohort 1 never reached the broker book · **CONFIRMED, HIGH**
 
-API evidence: all **15 orders submitted Sat 2026-07-04 show status CANCELED,
-fill $0.00** (14 stock entries + that day's SPY chunk). Orders submitted on
-actual trading evenings (07-06 onward) filled normally — DAY orders queued
-across the holiday weekend were canceled by the broker, not filled at Monday's
-open. Because `_submit_cohort` marks `submitted_at` on submission and
-`reconcile` only matches **fills**, a *submitted-then-canceled* order is
-invisible: the record holds 15 open positions, the broker holds none of them.
-Consequence: the Alpaca mirror is record-only for cohort 1; slippage (Gate B)
-has no data. The paper RECORD itself (scored on DB closes) is unaffected —
-Gate A is intact.
+API evidence: all **15 orders from Sat 2026-07-04 show status CANCELED, fill
+$0.00**, bulk-canceled within 2 seconds on 2026-07-05 19:04 UTC. Orders from
+actual trading evenings (07-06+) filled normally. Because `_submit_cohort` marks
+`submitted_at` on submission and `reconcile` only matches **fills**, a
+submitted-then-canceled order is invisible — the record holds 15 open positions
+the broker never held.
+
+**[rev] Corrections from the independent review:**
+- **Cause is UNPROVEN.** I asserted "canceled by the broker over the weekend."
+  The API does not record *who* canceled; a manual **Cancel-All** by the owner
+  (who hand-trades this account — see F-B) fits the 2-second bulk cancel equally.
+  Downgrade the cause to *unknown*; the remediation works either way.
+- **Cohort 1 is a LEGACY pre-Phase-3 book** (rows inserted `open`/`entry_open
+  NULL` on 07-02, proven by the old 3-field STATUS log). So it scores on
+  signal-close semantics and its broker mirror was *never* going to feed Gate B
+  slippage — the empty `alpaca_fills` is structural, not purely the cancel.
+- **HON blind spot:** the HON row produced **no broker order at all**
+  (non-fractionable, slot $54 < 1 share ≈$224 → skipped, then marked submitted).
+  An order-log scan can never heal it; only a position-vs-record **divergence
+  check** catches it. So a perfect cohort-1 resubmit mirrors at most 14/15 names.
+
+Consequence: the Alpaca mirror is record-only for cohort 1. The paper RECORD
+(scored on DB closes) is unaffected — **Gate A is intact.**
 
 ### F-B — Foreign/manual trades on the account · **CONFIRMED — needs the owner's attention**
 
@@ -142,25 +171,40 @@ still ACCEPTED. The system correctly leaves foreign symbols untouched
 [paper_trader.py:94-113](paper_trader.py)), but manual trades contaminate
 account equity and any account-level performance read.
 
+**[rev] Update (2026-07-10 ~13:35 UTC):** the covering A BUY (100 sh @ $134.48)
+has FILLED — **the Agilent short is closed**; live positions now show only SPY
+($7,459, core converged inside the 2% drift band exactly as Stage-1 predicted).
+The −$13,359 figure was a morning snapshot. The finding stands: foreign trades
+happened. **Operating rule: do not hand-trade this account** (use a second paper
+account for manual play — Alpaca permits several).
+
 ---
 
 ## Proposed remediation (ordered commits — **no code written, awaiting approval**)
 
-1. `fix:` reconcile detects CANCELED/EXPIRED/REJECTED entry orders and clears
-   `submitted_at` so the next nightly pass resubmits (heals F-A class
-   permanently; idempotent ids make retries safe).
-2. `fix:` clear `submitted_at` for the 15 orphaned 07-02 rows **only if** the
-   cohort is still young at merge time; otherwise let cohort 1 finish as
-   record-only and let cohort 2 (~07-16) be the first fully-mirrored book —
-   recommended, cleaner for Gate B.
-3. `feat:` divergence check in the nightly pass: count record-open positions
-   missing at the broker, print + store in `alpaca_state`; warn in the
-   dashboard Live tab.
-4. `docs:` FINDINGS.md entry for F-A/F-B; operating rule: **no manual trading
-   on this account** (open a second paper account for hand-trading — Alpaca
-   allows several).
-5. *(optional)* `feat:` pre-submission calendar check (`client.get_clock()`)
-   to defer submissions when the next session is >1 day away — belt-and-braces
-   on top of (1).
+**[rev] Re-ordered per the review** (divergence check is the only fix that
+catches the HON class; fix-1's id reuse would silently no-op):
+
+1. `feat:` **broker↔record divergence check** (PRIMARY) — each nightly pass
+   counts record-`open` tickers missing at the broker (and vice-versa), prints
+   + stores in `alpaca_state`, surfaces in the dashboard Live tab. This is the
+   only mechanism that catches *both* canceled orders **and** the HON
+   never-ordered case.
+2. `fix:` resubmit healing — on CANCELED/EXPIRED/REJECTED with `filled_qty==0`,
+   re-queue with a **fresh attempt-scoped `client_order_id`** (mirroring the
+   date-scoped SPY-core ids), NOT the original id (reusing it → 422 duplicate →
+   silent no-op loop). Validate with one live paper order before merge.
+3. `decision:` leave **cohort 1 record-only** (recommended). It's a legacy
+   close-entry book that can never feed Gate B slippage anyway; let cohort 2
+   (~07-20) be the first cleanly-mirrored book. (So fix 2 heals *future*
+   cancels, not the 07-02 rows.)
+4. `feat:` record **exit-side slippage** — match `close_position` fills (broker
+   ids) back to scored rows so Gate B measures round-trip, not entry-only, cost.
+5. `feat:` pre-submission calendar guard (`client.get_clock()`) — defer entries
+   when the next session is >1 day out (belt-and-braces vs weekend cancels).
+6. `docs:` fold F-A/F-B into FINDINGS.md; encode the **no-manual-trading** rule.
+
+Not fixing (correct as-is): the SPY nightly cadence, the buy-only HALT, the
+no-bracket-legs design, bear=cash. None are bugs.
 
 — End of audit. Stage 3 untouched, gates unmoved, n=3 is still n=3.
