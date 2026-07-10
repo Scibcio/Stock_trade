@@ -168,12 +168,64 @@ def test_reconcile_applies_fill_price(monkeypatch):
                  "VALUES ('2026-07-03', 'AAPL', 200.0, 'pending', '2026-07-03')")
     monkeypatch.setattr(broker, "is_configured", lambda: True)
     monkeypatch.setattr(broker, "get_client", lambda: object())
-    monkeypatch.setattr(broker, "filled_orders", lambda c: [
-        {"order_id": "2026-07-03|AAPL", "symbol": "AAPL", "side": "OrderSide.BUY",
+    monkeypatch.setattr(broker, "dead_order_ids", lambda c: set())
+    monkeypatch.setattr(broker, "filled_orders", lambda c: [    # date-scoped id, prefix-matched
+        {"order_id": "2026-07-03|AAPL|20260706", "symbol": "AAPL", "side": "OrderSide.BUY",
          "filled_avg_price": 201.5, "filled_at": "2026-07-06T13:30:00Z"}])
     assert paper_trader.reconcile(conn) == 1
     row = conn.execute("SELECT entry_open, status FROM paper_trades").fetchone()
     assert row == (201.5, "open")                                # the FILL is the truth
-    slip = conn.execute("SELECT slippage_bps FROM alpaca_fills").fetchone()[0]
+    slip = conn.execute("SELECT slippage_bps FROM alpaca_fills WHERE side='buy'").fetchone()[0]
     assert abs(slip - 75.0) < 1e-6                               # (201.5/200 - 1) = +75 bps
+    conn.close()
+
+
+def test_reconcile_heals_canceled_order(monkeypatch):
+    # F-A: a submitted pick canceled with no fill must be re-queued (submitted_at
+    # cleared), not orphaned - and cohort-1 legacy 'open' rows are NOT touched
+    conn = sqlite3.connect(":memory:")
+    predict_live.migrate(conn)
+    conn.execute("INSERT INTO paper_trades (pick_date, ticker, status, cohort_id, submitted_at) "
+                 "VALUES ('2026-07-03', 'MU', 'pending', '2026-07-03', '2026-07-04T22:00:00')")
+    conn.execute("INSERT INTO paper_trades (pick_date, ticker, status, cohort_id, submitted_at) "
+                 "VALUES ('2026-07-02', 'LEG', 'open', '2026-07-02', '2026-07-02T22:00:00')")
+    monkeypatch.setattr(broker, "is_configured", lambda: True)
+    monkeypatch.setattr(broker, "get_client", lambda: object())
+    monkeypatch.setattr(broker, "filled_orders", lambda c: [])
+    monkeypatch.setattr(broker, "dead_order_ids", lambda c: {"2026-07-03|MU|20260704"})
+    paper_trader.reconcile(conn)
+    marks = dict(conn.execute("SELECT ticker, submitted_at IS NULL FROM paper_trades").fetchall())
+    assert marks == {"MU": 1, "LEG": 0}                          # MU re-queued, legacy untouched
+    conn.close()
+
+
+def test_reconcile_exit_slippage(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    predict_live.migrate(conn)
+    conn.execute("INSERT INTO paper_trades (pick_date, ticker, status, exit_date, exit_price) "
+                 "VALUES ('2026-06-01', 'MU', 'win', '2026-06-15', 100.0)")
+    monkeypatch.setattr(broker, "is_configured", lambda: True)
+    monkeypatch.setattr(broker, "get_client", lambda: object())
+    monkeypatch.setattr(broker, "dead_order_ids", lambda c: set())
+    monkeypatch.setattr(broker, "filled_orders", lambda c: [
+        {"order_id": "broker-uuid-xyz", "symbol": "MU", "side": "OrderSide.SELL",
+         "filled_avg_price": 99.0, "filled_at": "2026-06-16T13:31:00Z"}])
+    paper_trader.reconcile(conn)
+    row = conn.execute("SELECT side, slippage_bps FROM alpaca_fills WHERE symbol='MU'").fetchone()
+    assert row[0] == "sell" and abs(row[1] - (-100.0)) < 1e-6    # (99/100 - 1) = -100 bps exit slip
+    conn.close()
+
+
+def test_divergence_flags_missing_and_foreign():
+    conn = sqlite3.connect(":memory:")
+    predict_live.migrate(conn)
+    conn.executescript(paper_trader.ALPACA_SCHEMA)
+    # AAA: real fill (entry_open set) -> expected at broker; LEG: legacy (NULL) -> not expected
+    conn.execute("INSERT INTO paper_trades (pick_date, ticker, status, entry_open) "
+                 "VALUES ('2026-07-06', 'AAA', 'open', 150.0)")
+    conn.execute("INSERT INTO paper_trades (pick_date, ticker, status, entry_open) "
+                 "VALUES ('2026-07-02', 'LEG', 'open', NULL)")
+    positions = {"SPY": {}, "ZZZ": {}}                           # AAA missing, ZZZ foreign
+    d = paper_trader._divergence(conn, positions)
+    assert d == {"missing": ["AAA"], "foreign": ["ZZZ"]}         # LEG not flagged
     conn.close()

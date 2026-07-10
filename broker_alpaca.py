@@ -193,3 +193,32 @@ def filled_orders(client, limit: int = 200) -> list:
                     "side": str(o.side), "filled_avg_price": float(o.filled_avg_price),
                     "filled_at": str(o.filled_at)})
     return out
+
+
+def dead_order_ids(client, limit: int = 200) -> set:
+    # client_order_ids of orders that ended with NO fill (canceled / expired /
+    # rejected) - the F-A class: a submitted order the broker never filled
+    from alpaca.trading.enums import QueryOrderStatus
+    from alpaca.trading.requests import GetOrdersRequest
+    orders = _retry(lambda: client.get_orders(
+        GetOrdersRequest(status=QueryOrderStatus.CLOSED, limit=limit)))
+    dead = set()
+    for o in orders:
+        status = str(getattr(o, "status", "")).lower()
+        if float(o.filled_qty or 0) == 0 and any(
+                s in status for s in ("cancel", "expired", "rejected")):
+            dead.add(o.client_order_id)
+    return dead
+
+
+def market_opens_within(client, hours: float) -> bool:
+    # True if the market is open OR the next session opens within `hours` of the
+    # broker's own clock. Guards DAY orders from being swept across a long
+    # weekend/holiday (the F-A failure). Fails OPEN (True) on a clock error -
+    # the resubmit-healing covers any resulting cancel.
+    from datetime import timedelta
+    try:
+        clock = _retry(client.get_clock)
+        return bool(clock.is_open) or (clock.next_open - clock.timestamp) <= timedelta(hours=hours)
+    except Exception:
+        return True

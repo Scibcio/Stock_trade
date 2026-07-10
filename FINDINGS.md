@@ -5,6 +5,24 @@ more than any single number: *test cheaply, believe nothing, kill bad ideas fast
 
 ---
 
+## Live paper-trading — audit + hardening (2026-07-10)
+
+The full SPY-anomaly + execution audit lives in **[FINDINGS_SPY.md](FINDINGS_SPY.md)**
+(independently re-verified). Outcome: the "SPY buying" was the U9 SPY core building to
+target by design — not a bug; safety rails (HALT, paper-lock) passed a live test. Two real
+issues found and **fixed**: cohort 1's orders were canceled over a holiday weekend and
+never retried (F-A), and manual trades had contaminated the account (F-B). Hardening
+shipped: broker↔record **divergence check**, **resubmit healing** with fresh date-scoped
+order ids, **exit-side slippage** measurement, and a **calendar guard** that defers entries
+when the next session is >30h away (no more weekend sweeps).
+
+> **Operating rule — do NOT hand-trade the live paper account (PA3J9LJP5ME3).** Manual
+> orders corrupt the account-level equity read and the slippage stats. Use a *separate*
+> paper account for manual play (Alpaca allows several). Legacy cohort 1 (07-02) is left
+> record-only on purpose — it predates the broker and can never feed Gate B.
+
+---
+
 ## The headline
 
 **The edge is real, but small.**

@@ -132,6 +132,8 @@ SATELLITE_WEIGHT  = 0.25          # U9: start conservative (panel tested 0.25-0.
 MAX_ORDER_NOTIONAL = 2_000        # hard per-order cap (safety rail)
 MIN_ORDER_NOTIONAL = 1.0          # Alpaca's $1 minimum for notional orders
 HALT_FILE = HERE / "HALT"         # create this file to block ALL new orders (kill switch)
+SUBMIT_MAX_HOURS  = 30            # only queue entries when the next session opens within this
+#                                 # many hours - stops DAY orders being swept over a weekend (F-A)
 
 
 # ----------------------------------
