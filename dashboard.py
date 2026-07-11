@@ -149,12 +149,36 @@ def backtest_data():
 
 @st.cache_data(ttl=120)
 def alpaca_live():
-    # written by paper_trader during the nightly run - the dashboard never
-    # touches the broker API itself (read-only by construction)
+    # nightly snapshots written by paper_trader (DB, always available offline)
     state = _query("SELECT ts, equity, spy_value, n_sleeve FROM alpaca_state ORDER BY ts")
     fills = _query("SELECT filled_at, symbol, side, price, slippage_bps FROM alpaca_fills "
                    "ORDER BY filled_at DESC LIMIT ?", (MAX_ROWS,))
-    return None if state.empty else {"state": state, "fills": fills}
+    div = _query("SELECT missing, foreign_syms FROM alpaca_divergence ORDER BY ts DESC LIMIT 1")
+    return {"state": state, "fills": fills, "div": (None if div.empty else div.iloc[0])}
+
+
+def fetch_alpaca_now():
+    # READ-ONLY live pull (account + positions) - no order path is reachable
+    # from here. Triggered by a button so we never hit the API on idle renders.
+    try:
+        import broker_alpaca as broker
+        if not broker.is_configured():
+            return {"error": "no paper keys in .env"}
+        client = broker.get_client()
+        acct = client.get_account()
+        pos = broker.get_positions(client)
+        rows = []
+        for sym, p in sorted(pos.items()):
+            cost = p["avg_entry"] * p["qty"]
+            rows.append({"Symbol": sym, "Qty": round(p["qty"], 3),
+                         "Market value": p["market_value"],
+                         "Unrealized P&L": p["market_value"] - cost,
+                         "P&L %": (p["market_value"] / cost - 1) if cost else 0.0})
+        return {"equity": float(acct.equity), "cash": float(acct.cash),
+                "buying_power": float(acct.buying_power), "status": str(acct.status),
+                "positions": pd.DataFrame(rows)}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @st.cache_data(ttl=60)
@@ -344,27 +368,71 @@ with tab_model:
                    "the edge lives in *being selective*, not in raw accuracy.")
 
 with tab_live:
+    st.subheader("Alpaca paper account — the survivorship-free verdict, live")
+    st.caption("Demo money only. This is the ONE clean test: no survivorship, real fills, "
+               "real slippage. Expect it to look far closer to the point-in-time backtest "
+               "(~+15%) than the survivor backtest (+72%). See FINDINGS_SPY.md / U6.")
+
+    rec = paper_record()
+    st.markdown("**Forward record**")
+    c = st.columns(5)
+    c[0].metric("Pending", rec["pending"], help="Picked at the close; fills at the next open")
+    c[1].metric("Open", rec["open"])
+    c[2].metric("Wins", rec["win"])
+    c[3].metric("Losses", rec["loss"])
+    c[4].metric("Win rate", "—" if rec["win_rate"] is None else f"{rec['win_rate']:.0%}")
+
+    # live read-only pull (button-triggered)
+    if st.button("🔄 Refresh live from Alpaca (read-only)", type="primary"):
+        st.session_state["alpaca_now"] = fetch_alpaca_now()
+    snap = st.session_state.get("alpaca_now")
+    if snap and "error" in snap:
+        st.info(f"Live pull unavailable ({snap['error']}). The nightly snapshot below still works. "
+                "Setup: copy `.env.example` → `.env` with your **paper** keys.")
+    elif snap:
+        st.markdown(f"**Live now** · account {snap['status']}")
+        c = st.columns(4)
+        c[0].metric("Equity", f"${snap['equity']:,.2f}")
+        c[1].metric("Cash", f"${snap['cash']:,.2f}")
+        c[2].metric("Buying power", f"${snap['buying_power']:,.2f}")
+        c[3].metric("Open positions", len(snap["positions"]))
+        if not snap["positions"].empty:
+            p = snap["positions"]
+            show = pd.DataFrame({
+                "Symbol": p["Symbol"], "Qty": p["Qty"],
+                "Market value": [f"${v:,.2f}" for v in p["Market value"]],
+                "Unrealized P&L": [f"${v:+,.2f}" for v in p["Unrealized P&L"]],
+                "P&L %": [f"{v:+.1%}" for v in p["P&L %"]],
+            })
+            st.dataframe(show, use_container_width=True, hide_index=True)
+
     live = alpaca_live()
-    if not live:
-        st.info("No Alpaca paper account connected yet. Copy `.env.example` → `.env`, paste your "
-                "**paper** API keys, and the nightly run takes it from there. (Setup: README Phase 3.)")
+    if live["div"] is not None:
+        import json
+        miss, foreign = json.loads(live["div"]["missing"] or "[]"), json.loads(live["div"]["foreign_syms"] or "[]")
+        if miss:
+            st.warning(f"⚠️ {len(miss)} record positions missing at the broker: {miss}")
+        if foreign:
+            st.warning(f"⚠️ {len(foreign)} broker positions not in the record (manual trades?): {foreign}")
+
+    st.divider()
+    if live["state"].empty:
+        st.info("No nightly broker snapshots yet — the daily run writes these once the account is connected.")
     else:
-        st.subheader("Alpaca paper account — the survivorship-free verdict, live")
-        st.caption("Demo money only. Fills are the record's truth; slippage vs the signal close "
-                   "feeds Gate B (median must stay < 15 bps).")
+        st.markdown("**Nightly snapshots** (written by the daily run)")
         latest = live["state"].iloc[-1]
         c = st.columns(4)
-        c[0].metric("Account equity", f"${latest['equity']:,.0f}")
-        c[1].metric("SPY core", f"${latest['spy_value']:,.0f}",
-                    help=f"Core–satellite mode: {(1 - 0.25):.0%} SPY / 25% strategy sleeve")
+        c[0].metric("Equity (last run)", f"${latest['equity']:,.0f}")
+        c[1].metric("SPY core", f"${latest['spy_value']:,.0f}", help="Core–satellite: 75% SPY / 25% strategy")
         c[2].metric("Sleeve positions", int(latest["n_sleeve"]))
         med = live["fills"]["slippage_bps"].median() if len(live["fills"]) else None
         c[3].metric("Median slippage", "—" if med is None or pd.isna(med) else f"{med:+.0f} bps",
-                    help="Fill price vs signal close. Gate B: < 15 bps")
+                    help="Fill vs signal close. Gate B target: < 15 bps")
         if len(live["state"]) > 1:
             st.line_chart(live["state"].set_index("ts")["equity"], height=260)
-        st.caption("Recent fills")
-        st.dataframe(live["fills"], use_container_width=True, hide_index=True)
+        if len(live["fills"]):
+            st.caption("Recent fills")
+            st.dataframe(live["fills"], use_container_width=True, hide_index=True)
 
 with tab_logs:
     lg = latest_log()
