@@ -42,3 +42,6 @@ __pycache__/
 
 # VS Code workspace settings
 .vscode/
+
+# U6 point-in-time membership cache (7MB, regenerable)
+sp500_membership.csv

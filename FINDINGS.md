@@ -282,6 +282,40 @@ negative — none of which changes the sign.*
 
 ---
 
+## U6 — point-in-time universe: most of the return was survivorship
+
+Using verified point-in-time S&P 500 membership (fja05680/sp500, 1996-2026),
+`run_pit_universe.py` attacks both survivorship biases:
+
+- **Coverage (bias B, unfixable):** 771 names were in the index during 2014-2026;
+  we hold prices for only **496 — 64% coverage**. The **275 missing** names
+  (dropped/delisted, disproportionately *losers*) inflate the book and cannot be
+  fixed without their price history.
+- **Addition look-ahead (bias A, fixable):** trading only members-as-of-each-date
+  (18.6% of candidate rows were not-yet-members) cuts the book hard:
+
+| Universe | Total | CAGR | MaxDD | Sharpe |
+|---|---|---|---|---|
+| Survivor universe (current backtest) | +72% | +4.7% | −20.3% | 0.52 |
+| **Point-in-time members only** | **+15%** | **+1.2%** | −14.4% | **0.17** |
+
+Removing just the *fixable* look-ahead erases ~80% of the return. The mechanism
+is clean: the names ADDED to the index during the window are companies that grew
+into it (rising stars) — trading them *before* they qualified is exactly the
+look-ahead survivorship injects, and it was carrying most of the "edge." And this
+is the optimistic bound: the 36% missing delisted losers (bias B) would drag it
+lower still.
+
+**Bottom line — the two capstones together (U6 + U7):** strip the survivorship
+(+72% → ~+15%, before the unfixable delisting drag) *and* the beta (U7: market-
+neutral alpha −2%), and the strategy's real, honest, market-independent edge is
+**near zero.** This is not a failure — it is the honesty machinery working exactly
+as designed. The forward paper record (survivorship-free by construction) was
+always billed as "the only clean verdict," and U6 quantifies precisely why:
+expect the live record to look far more like the +15% (or less) than the +72%.
+
+---
+
 ## U5 — meta-labeling: real but too small to trade (NOT adopted)
 
 A second-stage model predicting P(pick ends net-positive under ±3%), fit on
