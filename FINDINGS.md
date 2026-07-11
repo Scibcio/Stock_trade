@@ -23,17 +23,24 @@ when the next session is >30h away (no more weekend sweeps).
 
 ---
 
-## The headline
+## The headline (final synthesis)
 
-**The edge is real, but small.**
+**The model has a real, certified predictive edge — and that edge is *beta*, not alpha.**
 
-- Out-of-sample AUC ≈ **0.5645** on ~1.45M walk-forward predictions (500 stocks, 12 folds).
-- Base win rate 32.9%; the **top 5% most-confident picks win 44.4%** — selectivity works.
-- At the 3:1 reward:risk barrier, breakeven is 25%, so this is comfortably profitable *in
-  expectation* — the question is only whether the magnitude survives (see survivorship).
+The arc of this journal, in one line: a genuine signal (§ *certified real*) turned out,
+under two rigorous attacks, to be **survivorship-inflated** and **market-beta-driven**, with
+**near-zero true stock-selection alpha**. Every finding below is a step on that path.
 
-That ~0.56 sounds unremarkable, and it should: liquid large-cap price data is efficient,
-so a *thin* edge is the honest ceiling. The achievement is proving the edge is genuine.
+- **Real:** out-of-sample AUC ≈ **0.5645** on ~1.45M purged walk-forward predictions (500
+  stocks, 12 folds); beats the best of 2,000 shuffled nulls by ~124σ. Not curve-fitting.
+- **Small:** ~0.56 is the honest ceiling for efficient liquid large-caps; the edge lives in
+  *selectivity* (top-slice), not raw accuracy. Six feature experiments hit the same wall.
+- **Survivorship-inflated (U6):** trading only true point-in-time index members cuts the
+  backtest from **+72% → +15%** — ~80% of the "return" was look-ahead on tomorrow's winners.
+- **Beta, not alpha (U7):** hedge the market out correctly and the market-neutral return is
+  **−2%/yr**. The skill is picking stocks that *ride the market up*, not beating it.
+- **Verdict:** a **smart-beta / momentum** strategy, honestly best used **long-only as a
+  satellite** — never a market-neutral alpha engine. The forward paper record is the final judge.
 
 ---
 
@@ -127,15 +134,16 @@ short bottom) so it stops competing with the index's beta.
 
 ## The complete, honest characterization
 
-> **Real. Small. Data-limited. Certified. Index-lagging. Forward-pending.**
+> **Real. Small. Data-limited. Certified. Beta-driven. Survivorship-inflated. Forward-pending.**
 
-- **Real** — beats 2,000 nulls, no leakage (34 tests, purged walk-forward).
+- **Real** — beats 2,000 nulls, no leakage (62 tests, purged walk-forward).
 - **Small** — AUC ~0.56; the edge lives in *selectivity* (top-slice), not raw accuracy.
-- **Data-limited** — four experiments hit the same ceiling; more features won't help.
+- **Data-limited** — six experiments hit the same ceiling; more features won't help.
 - **Certified** — the signal is genuine, not curve-fitting.
-- **Index-lagging** — long-only, it beats random but not buy-and-hold; the +3% cap is the
-  bottleneck, not the signal.
-- **Forward-pending** — magnitude and risk-control value can only be proven live.
+- **Beta-driven (U7)** — strip the market and market-neutral alpha is −2%/yr; the edge is
+  momentum/beta selection, not market-independent skill.
+- **Survivorship-inflated (U6)** — point-in-time membership cuts +72% → +15%, and lower.
+- **Forward-pending** — the survivorship-free live paper record is the only clean verdict.
 
 ---
 
@@ -456,15 +464,19 @@ The kill list. Every future experiment that dies lands here with its numbers.
 
 ---
 
-## What's next (updated priority order, per the review panel)
+## Final status (research phase complete)
 
-**U1** earnings blackout filter → **U2** trailing-label retrain (`run_trail_label.py`,
-ready to run) → **U3** exit finalization (incl. the plain-hold candidate, on next-open
-entries) → **U8** de-beta the label → **U7** true beta-neutralization → **U9**
-core–satellite mode (50/50 SPY+strategy tested at Sharpe 0.92, DD −18.2% — beats SPY's
-0.86 via the 0.49 correlation) → U5 meta-labeling → U10 concentration ladder → U4
-learning-to-rank → U6 point-in-time universe → U11 (this registry, continuous).
+Every planned experiment has been run and adjudicated (U1–U9 done; U10/U4 left as
+low-priority extensions that the beta/survivorship capstones show cannot create alpha).
+The system is **live on Alpaca paper** (core–satellite: 75% SPY / 25% strategy sleeve),
+self-healing, and audited (see [FINDINGS_SPY.md](FINDINGS_SPY.md)).
 
-Then Phase 3: Alpaca paper-trading go-live (owner action required: create the paper
-account + `.env` keys). The forward record — `run_daily.py` logging and scoring
-`paper_trades` every weekday — remains the only clean verdict.
+**The research succeeded — just not the way hoped.** It produced a rigorously honest
+verdict: a certified-but-small, survivorship-inflated, beta-driven momentum edge with
+near-zero market-neutral alpha. The one thing left is **time**: the forward, survivorship-
+free paper record (`run_daily.py` scoring `paper_trades` nightly) is the only clean test,
+and U6 predicts it will look far closer to +15% than +72%.
+
+The discipline — purged walk-forward, null certification, a kill-list of everything that
+died, and two capstone survivorship/beta attacks on the system's *own* best number — is the
+real product.
