@@ -243,6 +243,35 @@ universe) can honestly price their risk.
 
 ---
 
+## U5 — meta-labeling: real but too small to trade (NOT adopted)
+
+A second-stage model predicting P(pick ends net-positive under ±3%), fit on
+folds 1-8, evaluated only on folds 9-12 (`run_meta_label.py`). Features: p_xgb,
+NATR, VIX level/change, SPY 200-dist, regime, cohort breadth.
+
+| Predicting net-positive on held-out folds | AUC |
+|---|---|
+| **Meta-model** | **0.5258** |
+| p_xgb alone (the bar) | 0.5072 |
+
+The meta genuinely out-ranks p_xgb — **+0.019 AUC = 5.6σ** on the 30k candidate
+pool. But the decision-relevant test is the actual top-15 picks, and there it
+collapses to noise: filtering the traded book by meta-p beats filtering by
+p_xgb by only ~2pp win rate = **1.3σ** (non-monotonic — it even loses at the 60%
+cut). The mechanism is clean: the strategy already narrows to high-p_xgb names,
+so little residual signal is left for the meta to exploit *among the picks* — its
+real edge lives across the *wide* pool the strategy never trades.
+
+**Verdict: NOT adopted.** A whole second model for a sub-2σ, non-monotonic gain
+on the live book fails the lean-beats-kitchen-sink bar. A fourth confirmation of
+the data ceiling: stacking models on the same features cannot manufacture edge.
+*(Kept as an optional filter — it IS a better selector than raising the p_xgb
+bar, so it helps IF one ever trades a deliberately more-concentrated book.)*
+The remaining real levers are portfolio-level (U7 beta-hedge, U9 core-satellite),
+not more model layers.
+
+---
+
 ## Cadence — one book / 10 sessions is the sweet spot (faster REJECTED)
 
 Does entering more often (staggered overlapping books) beat one book per 10
@@ -349,6 +378,7 @@ The kill list. Every future experiment that dies lands here with its numbers.
 | De-beta'd labels (±2×ATR, asym-ATR, residual) | AUC 0.51-0.53, bear fold worse | removing beta from the label removes the edge — beta management belongs to the portfolio layer (U7/U9) |
 | Earnings blackout (5 sessions) | p5/worst unchanged, total −21pp, Sharpe −0.11 | the loss tail isn't earnings; the filter blocked profitable pre-earnings momentum |
 | Faster cadence (every 1/2/5 sessions) | Sharpe 0.36–0.38 vs 0.50, 3–21× turnover | same capital split thinner; churn cost beats signal freshness — 10-session cadence kept |
+| Meta-labeling (U5) | pool AUC +0.019 (5.6σ) but +1.3σ on traded picks | real edge across the wide pool, noise among already-selected top-15; not worth a 2nd live model |
 
 ---
 
