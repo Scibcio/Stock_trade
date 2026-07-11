@@ -243,6 +243,45 @@ universe) can honestly price their risk.
 
 ---
 
+## U7 — beta-neutralization: the edge IS beta (the unifying finding)
+
+The long book's raw entry-beta averages 1.60, but the ±3% barriers truncate
+co-movement, so its **realized** beta is only 0.54 (`run_beta_hedge.py`). Hedging
+on the raw 1.60 (the handoff's assumption) catastrophically over-hedges; the
+correctly-calibrated 0.54× SPY short lands net-neutral:
+
+| Book | Total | CAGR | Sharpe | MaxDD | Realized β | Corr SPY |
+|---|---|---|---|---|---|---|
+| Unhedged (current long book) | +72% | +5.6% | 0.57 | −20.3% | 0.54 | 0.61 |
+| Raw-Beta hedge (1.60×) | −84% | −16.9% | −1.12 | −84.5% | −1.07 | −0.84 |
+| **Realized-beta hedge (0.54×)** | **−19%** | **−2.1%** | −0.21 | −27.2% | **−0.00** | **−0.00** |
+
+The 0.54× hedge PASSES the |net β| < 0.15 acceptance (β −0.00, corr −0.00 —
+genuinely market-neutral) — and the market-neutral return is **negative
+(−2.1% CAGR)**. Decomposition is clean: **beta contribution positive, alpha
+contribution negative.** Every dollar of the book's +72% came from its 0.54 beta
+loading riding a historic bull; strip the market out and there is no positive
+stock-selection alpha left.
+
+**This unifies the whole project.** The certified edge (AUC 0.56) is real — but
+it is skill at *picking which stocks will ride the market up* (high-beta,
+high-momentum names more likely to hit +3% first, U8), NOT market-independent
+selection. That is why: the edge certifies, yet the book underperforms SPY (a
+worse way to get beta), the label rewards beta (U8), and the market-neutral alpha
+is negative (here). **This is a smart-beta / momentum strategy, not an alpha
+strategy.**
+
+**Consequences.** (1) Beta-hedging is REJECTED as a profit path — it removes the
+only source of return. (2) The "portable alpha" SPY+MN overlay (A3) is correctly
+dead: there is no alpha to port. (3) The strategy's only honest use is **long-only
+as a satellite** (U9, already live), accepting it as a higher-volatility way to
+hold equities. *Caveats: the hedge ratio is in-sample (a live hedge needs a
+rolling estimate); exit-timing attenuates the beta estimate; survivorship
+inflates the long book, so true market-neutral alpha is likely even more
+negative — none of which changes the sign.*
+
+---
+
 ## U5 — meta-labeling: real but too small to trade (NOT adopted)
 
 A second-stage model predicting P(pick ends net-positive under ±3%), fit on
@@ -379,6 +418,7 @@ The kill list. Every future experiment that dies lands here with its numbers.
 | Earnings blackout (5 sessions) | p5/worst unchanged, total −21pp, Sharpe −0.11 | the loss tail isn't earnings; the filter blocked profitable pre-earnings momentum |
 | Faster cadence (every 1/2/5 sessions) | Sharpe 0.36–0.38 vs 0.50, 3–21× turnover | same capital split thinner; churn cost beats signal freshness — 10-session cadence kept |
 | Meta-labeling (U5) | pool AUC +0.019 (5.6σ) but +1.3σ on traded picks | real edge across the wide pool, noise among already-selected top-15; not worth a 2nd live model |
+| Beta-hedge / market-neutral (U7) | market-neutral CAGR −2.1% at β/corr −0.00 | the edge IS beta; no positive alpha to hedge for — keep long-only (U9), kill portable-alpha |
 
 ---
 
