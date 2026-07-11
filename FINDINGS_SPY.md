@@ -2,7 +2,7 @@
 
 Read-only investigation per `CLAUDE_CODE_PROMPT_SPY_AUDIT.md` (Stages 1–2).
 **No code was changed.** Every claim carries file:line, DB rows, or live Alpaca
-API responses, pulled 2026-07-10 (morning) from paper account PA3J9LJP5ME3.
+API responses, pulled 2026-07-10 (morning) from the live paper account.
 
 > **Independently re-verified** (2026-07-10) by two adversarial read-only
 > reviewers. Every Stage-1 and Stage-2 verdict below HELD under re-derivation.

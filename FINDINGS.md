@@ -16,7 +16,7 @@ shipped: broker↔record **divergence check**, **resubmit healing** with fresh d
 order ids, **exit-side slippage** measurement, and a **calendar guard** that defers entries
 when the next session is >30h away (no more weekend sweeps).
 
-> **Operating rule — do NOT hand-trade the live paper account (PA3J9LJP5ME3).** Manual
+> **Operating rule — do NOT hand-trade the live paper account.** Manual
 > orders corrupt the account-level equity read and the slippage stats. Use a *separate*
 > paper account for manual play (Alpaca allows several). Legacy cohort 1 (07-02) is left
 > record-only on purpose — it predates the broker and can never feed Gate B.
