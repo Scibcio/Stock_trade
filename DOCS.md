@@ -47,7 +47,9 @@ database.py → trading.db → features.py → labels.py → pipeline.py (walk-f
 | `predict_live.py` | Daily picks: train on full history, rank latest day, earnings blackout, cohort every 10 sessions; logs `pending` → fills at next open → scores via ±3% exits into `paper_trades`. |
 | `earnings.py` | U1: earnings-date collector (yfinance) + blackout logic (skip names reporting within 5 sessions). |
 | `insider.py` | SEC EDGAR Form 4 collector → `insider_flow` (tested: no lift at 10d; kept for research). |
-| `run_daily.py` | The automated daily cycle (Task Scheduler, weekdays 22:00): data → fill pendings → score → new cohort if due. Logs to `logs/`. |
+| `broker_alpaca.py` | The ONLY broker-facing file. Paper-locked by construction (PK-key + `APCA_PAPER` + endpoint hard-fails), HALT kill switch, notional caps, idempotent order ids, retry backoff. |
+| `paper_trader.py` | Nightly broker pass: reconcile real fills into the record (fills = truth, slippage logged), mirror scored exits, keep the U9 SPY core on target, queue tonight's picks for the open. |
+| `run_daily.py` | The automated daily cycle (Task Scheduler, weekdays 22:00): data → reconcile+fill pendings → score → new cohort if due → broker pass. Logs to `logs/`. One-click: `run_paper.bat`. |
 | `dashboard.py` | Streamlit control room (localhost-only): overview, picks, backtest, model, logs + buttons to run everything. |
 
 ### Experiments (each = one FINDINGS entry; kill-listed if dead)

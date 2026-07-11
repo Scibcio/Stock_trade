@@ -71,7 +71,7 @@ def main() -> None:
     logf = open(LOG_DIR / f"daily_{date.today()}.log", "a", encoding="utf-8")
     real_stdout = sys.stdout
     sys.stdout = _Tee(real_stdout, logf)
-    status = {"data": "skip", "fills": "skip", "score": "skip", "picks": "skip"}
+    status = {"data": "skip", "fills": "skip", "score": "skip", "picks": "skip", "broker": "skip"}
 
     try:
         print(f"\n{'=' * 60}\n  DAILY RUN  {datetime.now():%Y-%m-%d %H:%M:%S}\n{'=' * 60}")
@@ -91,6 +91,8 @@ def main() -> None:
         try:                                                 # 2. fill pending entries at today's open
             conn = sqlite3.connect(config.DB_PATH)
             predict_live.migrate(conn)
+            import paper_trader                              #    real Alpaca fills first (A5:
+            paper_trader.reconcile(conn)                     #    fills are truth), DB opens fallback
             n_fill = predict_live.fill_pending(conn)
             conn.close()
             if n_fill:
@@ -120,8 +122,18 @@ def main() -> None:
             status["picks"] = "FAILED"
             traceback.print_exc()
 
+        try:                                                 # 5. Alpaca paper broker (Phase 3):
+            import paper_trader                              #    mirror exits, SPY core, queue
+            conn = sqlite3.connect(config.DB_PATH)           #    tonight's entries for the open
+            r = paper_trader.trade(conn)
+            conn.close()
+            status["broker"] = "skip" if "skipped" in r else "ok"
+        except Exception:
+            status["broker"] = "FAILED"
+            traceback.print_exc()
+
         print(f"\n  STATUS: data={status['data']}  fills={status['fills']}  "
-              f"score={status['score']}  picks={status['picks']}")
+              f"score={status['score']}  picks={status['picks']}  broker={status['broker']}")
     finally:
         sys.stdout = real_stdout
         logf.close()

@@ -112,7 +112,7 @@ def load_signals(conn) -> pd.DataFrame:
         feat = features.compute_features(features.load_stock(t, conn), baselines)
         if feat.empty:
             continue
-        feat = feat[["date", "open", "close", "NATR_14"]].copy()
+        feat = feat[["date", "open", "close", "NATR_14", "Beta_20"]].copy()   # Beta_20 for U7 hedge
         feat["realized"] = realized_return_series(feat["open"].to_numpy(dtype=float),
                                                   feat["close"].to_numpy(dtype=float))
         feat["ticker"] = t

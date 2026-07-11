@@ -62,9 +62,11 @@ CREATE TABLE IF NOT EXISTS cohorts (
 """
 
 # columns added by the F4 schema upgrade — backfilled as NULL on legacy rows
+# (submitted_at = broker marker, Phase 3: decoupled from entry_open so a failed
+#  submission night can never permanently orphan a pick)
 _MIGRATE_COLS = {"weight": "REAL", "exposure": "REAL", "cohort_id": "TEXT",
                  "entry_open": "REAL", "exit_date": "TEXT", "exit_price": "REAL",
-                 "realized_ret": "REAL"}
+                 "realized_ret": "REAL", "submitted_at": "TEXT"}
 
 
 def migrate(conn) -> None:
@@ -200,6 +202,23 @@ def main() -> None:
     print("  then score forward to prove the edge is real.")
 
 
+def expire_stale_pending(conn) -> int:
+    # a pending pick that never got an entry price within a full hold window is
+    # unfillable (delisted/halted ticker) - retire it so nothing waits on it forever
+    n = 0
+    for tid, pick_date in conn.execute(
+            "SELECT id, pick_date FROM paper_trades WHERE status='pending'").fetchall():
+        sessions = conn.execute("SELECT COUNT(DISTINCT date) FROM daily_prices WHERE date > ?",
+                                (pick_date,)).fetchone()[0]
+        if sessions > config.HOLD_DAYS:
+            conn.execute("UPDATE paper_trades SET status='dead' WHERE id=?", (tid,))
+            n += 1
+    conn.commit()
+    if n:
+        print(f"  retired {n} stale pending picks (no fill within a hold window)")
+    return n
+
+
 def score_paper_trades(conn) -> int:
     """
     Mark matured open trades via the EXIT barriers on forward closes.
@@ -207,6 +226,7 @@ def score_paper_trades(conn) -> int:
     their original close-entry scoring so the early record stays comparable.
     Win = net-positive exit (realized_ret > 0); realized_ret is stored either way.
     """
+    expire_stale_pending(conn)
     scored = 0
     for tid, pick_date, ticker, entry_close, entry_open in conn.execute(
             "SELECT id, pick_date, ticker, entry_close, entry_open FROM paper_trades "

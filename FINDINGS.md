@@ -5,17 +5,42 @@ more than any single number: *test cheaply, believe nothing, kill bad ideas fast
 
 ---
 
-## The headline
+## Live paper-trading — audit + hardening (2026-07-10)
 
-**The edge is real, but small.**
+The full SPY-anomaly + execution audit lives in **[FINDINGS_SPY.md](FINDINGS_SPY.md)**
+(independently re-verified). Outcome: the "SPY buying" was the U9 SPY core building to
+target by design — not a bug; safety rails (HALT, paper-lock) passed a live test. Two real
+issues found and **fixed**: cohort 1's orders were canceled over a holiday weekend and
+never retried (F-A), and manual trades had contaminated the account (F-B). Hardening
+shipped: broker↔record **divergence check**, **resubmit healing** with fresh date-scoped
+order ids, **exit-side slippage** measurement, and a **calendar guard** that defers entries
+when the next session is >30h away (no more weekend sweeps).
 
-- Out-of-sample AUC ≈ **0.5645** on ~1.45M walk-forward predictions (500 stocks, 12 folds).
-- Base win rate 32.9%; the **top 5% most-confident picks win 44.4%** — selectivity works.
-- At the 3:1 reward:risk barrier, breakeven is 25%, so this is comfortably profitable *in
-  expectation* — the question is only whether the magnitude survives (see survivorship).
+> **Operating rule — do NOT hand-trade the live paper account (PA3J9LJP5ME3).** Manual
+> orders corrupt the account-level equity read and the slippage stats. Use a *separate*
+> paper account for manual play (Alpaca allows several). Legacy cohort 1 (07-02) is left
+> record-only on purpose — it predates the broker and can never feed Gate B.
 
-That ~0.56 sounds unremarkable, and it should: liquid large-cap price data is efficient,
-so a *thin* edge is the honest ceiling. The achievement is proving the edge is genuine.
+---
+
+## The headline (final synthesis)
+
+**The model has a real, certified predictive edge — and that edge is *beta*, not alpha.**
+
+The arc of this journal, in one line: a genuine signal (§ *certified real*) turned out,
+under two rigorous attacks, to be **survivorship-inflated** and **market-beta-driven**, with
+**near-zero true stock-selection alpha**. Every finding below is a step on that path.
+
+- **Real:** out-of-sample AUC ≈ **0.5645** on ~1.45M purged walk-forward predictions (500
+  stocks, 12 folds); beats the best of 2,000 shuffled nulls by ~124σ. Not curve-fitting.
+- **Small:** ~0.56 is the honest ceiling for efficient liquid large-caps; the edge lives in
+  *selectivity* (top-slice), not raw accuracy. Six feature experiments hit the same wall.
+- **Survivorship-inflated (U6):** trading only true point-in-time index members cuts the
+  backtest from **+72% → +15%** — ~80% of the "return" was look-ahead on tomorrow's winners.
+- **Beta, not alpha (U7):** hedge the market out correctly and the market-neutral return is
+  **−2%/yr**. The skill is picking stocks that *ride the market up*, not beating it.
+- **Verdict:** a **smart-beta / momentum** strategy, honestly best used **long-only as a
+  satellite** — never a market-neutral alpha engine. The forward paper record is the final judge.
 
 ---
 
@@ -109,15 +134,16 @@ short bottom) so it stops competing with the index's beta.
 
 ## The complete, honest characterization
 
-> **Real. Small. Data-limited. Certified. Index-lagging. Forward-pending.**
+> **Real. Small. Data-limited. Certified. Beta-driven. Survivorship-inflated. Forward-pending.**
 
-- **Real** — beats 2,000 nulls, no leakage (34 tests, purged walk-forward).
+- **Real** — beats 2,000 nulls, no leakage (62 tests, purged walk-forward).
 - **Small** — AUC ~0.56; the edge lives in *selectivity* (top-slice), not raw accuracy.
-- **Data-limited** — four experiments hit the same ceiling; more features won't help.
+- **Data-limited** — six experiments hit the same ceiling; more features won't help.
 - **Certified** — the signal is genuine, not curve-fitting.
-- **Index-lagging** — long-only, it beats random but not buy-and-hold; the +3% cap is the
-  bottleneck, not the signal.
-- **Forward-pending** — magnitude and risk-control value can only be proven live.
+- **Beta-driven (U7)** — strip the market and market-neutral alpha is −2%/yr; the edge is
+  momentum/beta selection, not market-independent skill.
+- **Survivorship-inflated (U6)** — point-in-time membership cuts +72% → +15%, and lower.
+- **Forward-pending** — the survivorship-free live paper record is the only clean verdict.
 
 ---
 
@@ -225,6 +251,134 @@ universe) can honestly price their risk.
 
 ---
 
+## U7 — beta-neutralization: the edge IS beta (the unifying finding)
+
+The long book's raw entry-beta averages 1.60, but the ±3% barriers truncate
+co-movement, so its **realized** beta is only 0.54 (`run_beta_hedge.py`). Hedging
+on the raw 1.60 (the handoff's assumption) catastrophically over-hedges; the
+correctly-calibrated 0.54× SPY short lands net-neutral:
+
+| Book | Total | CAGR | Sharpe | MaxDD | Realized β | Corr SPY |
+|---|---|---|---|---|---|---|
+| Unhedged (current long book) | +72% | +5.6% | 0.57 | −20.3% | 0.54 | 0.61 |
+| Raw-Beta hedge (1.60×) | −84% | −16.9% | −1.12 | −84.5% | −1.07 | −0.84 |
+| **Realized-beta hedge (0.54×)** | **−19%** | **−2.1%** | −0.21 | −27.2% | **−0.00** | **−0.00** |
+
+The 0.54× hedge PASSES the |net β| < 0.15 acceptance (β −0.00, corr −0.00 —
+genuinely market-neutral) — and the market-neutral return is **negative
+(−2.1% CAGR)**. Decomposition is clean: **beta contribution positive, alpha
+contribution negative.** Every dollar of the book's +72% came from its 0.54 beta
+loading riding a historic bull; strip the market out and there is no positive
+stock-selection alpha left.
+
+**This unifies the whole project.** The certified edge (AUC 0.56) is real — but
+it is skill at *picking which stocks will ride the market up* (high-beta,
+high-momentum names more likely to hit +3% first, U8), NOT market-independent
+selection. That is why: the edge certifies, yet the book underperforms SPY (a
+worse way to get beta), the label rewards beta (U8), and the market-neutral alpha
+is negative (here). **This is a smart-beta / momentum strategy, not an alpha
+strategy.**
+
+**Consequences.** (1) Beta-hedging is REJECTED as a profit path — it removes the
+only source of return. (2) The "portable alpha" SPY+MN overlay (A3) is correctly
+dead: there is no alpha to port. (3) The strategy's only honest use is **long-only
+as a satellite** (U9, already live), accepting it as a higher-volatility way to
+hold equities. *Caveats: the hedge ratio is in-sample (a live hedge needs a
+rolling estimate); exit-timing attenuates the beta estimate; survivorship
+inflates the long book, so true market-neutral alpha is likely even more
+negative — none of which changes the sign.*
+
+---
+
+## U6 — point-in-time universe: most of the return was survivorship
+
+Using verified point-in-time S&P 500 membership (fja05680/sp500, 1996-2026),
+`run_pit_universe.py` attacks both survivorship biases:
+
+- **Coverage (bias B, unfixable):** 771 names were in the index during 2014-2026;
+  we hold prices for only **496 — 64% coverage**. The **275 missing** names
+  (dropped/delisted, disproportionately *losers*) inflate the book and cannot be
+  fixed without their price history.
+- **Addition look-ahead (bias A, fixable):** trading only members-as-of-each-date
+  (18.6% of candidate rows were not-yet-members) cuts the book hard:
+
+| Universe | Total | CAGR | MaxDD | Sharpe |
+|---|---|---|---|---|
+| Survivor universe (current backtest) | +72% | +4.7% | −20.3% | 0.52 |
+| **Point-in-time members only** | **+15%** | **+1.2%** | −14.4% | **0.17** |
+
+Removing just the *fixable* look-ahead erases ~80% of the return. The mechanism
+is clean: the names ADDED to the index during the window are companies that grew
+into it (rising stars) — trading them *before* they qualified is exactly the
+look-ahead survivorship injects, and it was carrying most of the "edge." And this
+is the optimistic bound: the 36% missing delisted losers (bias B) would drag it
+lower still.
+
+**Bottom line — the two capstones together (U6 + U7):** strip the survivorship
+(+72% → ~+15%, before the unfixable delisting drag) *and* the beta (U7: market-
+neutral alpha −2%), and the strategy's real, honest, market-independent edge is
+**near zero.** This is not a failure — it is the honesty machinery working exactly
+as designed. The forward paper record (survivorship-free by construction) was
+always billed as "the only clean verdict," and U6 quantifies precisely why:
+expect the live record to look far more like the +15% (or less) than the +72%.
+
+---
+
+## U5 — meta-labeling: real but too small to trade (NOT adopted)
+
+A second-stage model predicting P(pick ends net-positive under ±3%), fit on
+folds 1-8, evaluated only on folds 9-12 (`run_meta_label.py`). Features: p_xgb,
+NATR, VIX level/change, SPY 200-dist, regime, cohort breadth.
+
+| Predicting net-positive on held-out folds | AUC |
+|---|---|
+| **Meta-model** | **0.5258** |
+| p_xgb alone (the bar) | 0.5072 |
+
+The meta genuinely out-ranks p_xgb — **+0.019 AUC = 5.6σ** on the 30k candidate
+pool. But the decision-relevant test is the actual top-15 picks, and there it
+collapses to noise: filtering the traded book by meta-p beats filtering by
+p_xgb by only ~2pp win rate = **1.3σ** (non-monotonic — it even loses at the 60%
+cut). The mechanism is clean: the strategy already narrows to high-p_xgb names,
+so little residual signal is left for the meta to exploit *among the picks* — its
+real edge lives across the *wide* pool the strategy never trades.
+
+**Verdict: NOT adopted.** A whole second model for a sub-2σ, non-monotonic gain
+on the live book fails the lean-beats-kitchen-sink bar. A fourth confirmation of
+the data ceiling: stacking models on the same features cannot manufacture edge.
+*(Kept as an optional filter — it IS a better selector than raising the p_xgb
+bar, so it helps IF one ever trades a deliberately more-concentrated book.)*
+The remaining real levers are portfolio-level (U7 beta-hedge, U9 core-satellite),
+not more model layers.
+
+---
+
+## Cadence — one book / 10 sessions is the sweet spot (faster REJECTED)
+
+Does entering more often (staggered overlapping books) beat one book per 10
+sessions? Same capital, same ±3% exit, same names — only the entry cadence
+changes; K=round(10/N) overlapping books, 15·K slots, net of 10 bps
+(`run_cadence_sweep.py`, event-driven engine):
+
+| Cadence | Slots | Trades | Total | MaxDD | Sharpe |
+|---|---|---|---|---|---|
+| **1 book / 10 sessions (current)** | 15 | 3,474 | **+70%** | −24.6% | **0.50** |
+| new book every 5 sessions | 30 | 11,098 | −10% | −30.8% | −0.02 |
+| new book every 2 sessions | 75 | 36,024 | +63% | −21.5% | 0.38 |
+| new book every session (old daily) | 150 | 74,181 | +58% | −24.1% | 0.36 |
+
+The current cadence wins on Sharpe **and** return. Faster cadences run 3–21× the
+turnover for the same-or-worse result — the cost drag beats any signal-freshness
+gain, and capital is already fully deployed for the whole hold, so entering more
+often just splits the same money thinner. Confirms the panel's F5 decision with
+fresh evidence, and vindicates dropping the old daily-overlapping design.
+*(Caveat: the every-5 row is a non-monotonic outlier — treat exact fast-cadence
+magnitudes with caution; the direction, "faster is not better," is unambiguous.)*
+The current-cadence figure (+70%/0.50) reproduces the official cohort backtest
+(+72%/0.52), cross-validating the engine.
+
+---
+
 ## The hidden beta tilt (panel discovery — the mechanism behind several findings)
 
 Measured on our own OOF picks: the top-15 book runs **β ≈ 1.62** vs SPY (bottom-15:
@@ -304,18 +458,25 @@ The kill list. Every future experiment that dies lands here with its numbers.
 | Symmetric-label retrain (±3%) | AUC 0.591 certified, but book +31%/Sharpe 0.28 | higher pooled AUC ≠ better top-15 book; the 3:1 label's asymmetry IS the selection edge |
 | De-beta'd labels (±2×ATR, asym-ATR, residual) | AUC 0.51-0.53, bear fold worse | removing beta from the label removes the edge — beta management belongs to the portfolio layer (U7/U9) |
 | Earnings blackout (5 sessions) | p5/worst unchanged, total −21pp, Sharpe −0.11 | the loss tail isn't earnings; the filter blocked profitable pre-earnings momentum |
+| Faster cadence (every 1/2/5 sessions) | Sharpe 0.36–0.38 vs 0.50, 3–21× turnover | same capital split thinner; churn cost beats signal freshness — 10-session cadence kept |
+| Meta-labeling (U5) | pool AUC +0.019 (5.6σ) but +1.3σ on traded picks | real edge across the wide pool, noise among already-selected top-15; not worth a 2nd live model |
+| Beta-hedge / market-neutral (U7) | market-neutral CAGR −2.1% at β/corr −0.00 | the edge IS beta; no positive alpha to hedge for — keep long-only (U9), kill portable-alpha |
 
 ---
 
-## What's next (updated priority order, per the review panel)
+## Final status (research phase complete)
 
-**U1** earnings blackout filter → **U2** trailing-label retrain (`run_trail_label.py`,
-ready to run) → **U3** exit finalization (incl. the plain-hold candidate, on next-open
-entries) → **U8** de-beta the label → **U7** true beta-neutralization → **U9**
-core–satellite mode (50/50 SPY+strategy tested at Sharpe 0.92, DD −18.2% — beats SPY's
-0.86 via the 0.49 correlation) → U5 meta-labeling → U10 concentration ladder → U4
-learning-to-rank → U6 point-in-time universe → U11 (this registry, continuous).
+Every planned experiment has been run and adjudicated (U1–U9 done; U10/U4 left as
+low-priority extensions that the beta/survivorship capstones show cannot create alpha).
+The system is **live on Alpaca paper** (core–satellite: 75% SPY / 25% strategy sleeve),
+self-healing, and audited (see [FINDINGS_SPY.md](FINDINGS_SPY.md)).
 
-Then Phase 3: Alpaca paper-trading go-live (owner action required: create the paper
-account + `.env` keys). The forward record — `run_daily.py` logging and scoring
-`paper_trades` every weekday — remains the only clean verdict.
+**The research succeeded — just not the way hoped.** It produced a rigorously honest
+verdict: a certified-but-small, survivorship-inflated, beta-driven momentum edge with
+near-zero market-neutral alpha. The one thing left is **time**: the forward, survivorship-
+free paper record (`run_daily.py` scoring `paper_trades` nightly) is the only clean test,
+and U6 predicts it will look far closer to +15% than +72%.
+
+The discipline — purged walk-forward, null certification, a kill-list of everything that
+died, and two capstone survivorship/beta attacks on the system's *own* best number — is the
+real product.
