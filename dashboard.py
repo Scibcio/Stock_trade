@@ -40,7 +40,66 @@ DISCLAIMER = (
     "accepts no liability for any decision or loss."
 )
 
-st.set_page_config(page_title="Stock_trade", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Stock_trade", page_icon="🕮", layout="wide")
+
+# ---- "Ledger" theme polish: fine typography, tabular-mono numerals, hairline
+#      cards, muted alerts. Warm paper + one bronze accent — no AI blue/purple. ----
+STYLE = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap');
+:root{
+  --ink:#231f18; --muted:#7c7264; --line:#e7ded0; --accent:#a86f2c;
+  --card:#ffffff; --pos:#1a7f4b; --neg:#b23b2e;
+}
+html, body, .stApp, [data-testid="stAppViewContainer"], [class*="css"]{
+  font-family:'IBM Plex Sans', system-ui, -apple-system, sans-serif; color:var(--ink);
+}
+.block-container{ padding-top:2rem; padding-bottom:3rem; max-width:1200px; }
+h1,h2,h3,h4{ letter-spacing:-0.015em; font-weight:600; }
+h2{ font-size:1.15rem; } h3{ font-size:1.02rem; margin-top:0.3rem; }
+hr{ border-color:var(--line); }
+
+/* editorial header */
+.app-head{ border-bottom:2px solid var(--accent); padding:0.1rem 0 0.7rem; margin-bottom:1.3rem; }
+.app-head .t{ font-family:'Newsreader', Georgia, serif; font-weight:600; font-size:2rem;
+  letter-spacing:-0.01em; line-height:1.1; }
+.app-head .s{ color:var(--muted); font-size:0.88rem; margin-top:0.15rem; }
+.app-head .t b{ color:var(--accent); font-weight:600; }
+
+/* metric = a clean bordered card with a tabular mono value */
+[data-testid="stMetric"]{ background:var(--card); border:1px solid var(--line);
+  border-radius:9px; padding:0.7rem 0.85rem; }
+[data-testid="stMetricLabel"] p{ font-size:0.68rem; font-weight:500; letter-spacing:0.07em;
+  text-transform:uppercase; color:var(--muted); }
+[data-testid="stMetricValue"]{ font-family:'IBM Plex Mono', monospace; font-variant-numeric:tabular-nums;
+  font-weight:600; font-size:1.45rem; color:var(--ink); }
+[data-testid="stMetricDelta"]{ font-family:'IBM Plex Mono', monospace; font-size:0.78rem; }
+
+/* tabs: quiet, underline the active one in accent */
+[data-testid="stTabs"] [role="tablist"]{ gap:1.3rem; border-bottom:1px solid var(--line); }
+[data-testid="stTabs"] [role="tab"]{ padding:0.35rem 0; color:var(--muted); font-weight:500; }
+[data-testid="stTabs"] [role="tab"] p{ font-size:0.92rem; }
+[data-testid="stTabs"] [aria-selected="true"]{ color:var(--ink); box-shadow:inset 0 -2px 0 var(--accent); }
+
+/* buttons: flat, hairline, accent on hover */
+.stButton button, [data-testid="stBaseButton-secondary"]{ border-radius:7px; border:1px solid var(--line);
+  font-weight:500; background:var(--card); }
+.stButton button:hover{ border-color:var(--accent); color:var(--accent); }
+[data-testid="stBaseButton-primary"]{ background:var(--accent); border-color:var(--accent); color:#fff; }
+
+/* sidebar */
+[data-testid="stSidebar"]{ border-right:1px solid var(--line); }
+[data-testid="stSidebar"] .stButton button{ text-align:left; }
+
+/* muted, flat alerts (kill the loud default blue/yellow blocks) */
+[data-testid="stAlert"]{ border-radius:9px; border:1px solid var(--line); background:#fbf7f1; }
+
+/* tables + charts sit in hairline frames */
+[data-testid="stDataFrame"], [data-testid="stTable"]{ border:1px solid var(--line); border-radius:9px; }
+[data-testid="stCaptionContainer"] p{ color:var(--muted); }
+</style>
+"""
+st.markdown(STYLE, unsafe_allow_html=True)
 
 
 # ==================================================
@@ -202,16 +261,16 @@ def run_script(script: str, timeout: int = 1200):
 # CONTROL PANEL  (LOCAL ONLY — executes scripts)
 # ==================================================
 
-st.sidebar.title("⚙️ Control panel")
+st.sidebar.markdown("#### Control panel")
 st.sidebar.caption("Run the system here — no terminal needed.")
 
 ACTIONS = [
-    ("🚀  Run full daily cycle", "run_daily.py", "~4 min · update data, make picks, score trades"),
-    ("🎯  Generate picks", "predict_live.py", "~3 min · fresh picks from the latest data"),
-    ("📥  Update data only", "database.py", "~2 min · pull the latest close"),
-    ("🔬  Rebuild model stats", "pipeline.py", "~2 min · refresh the Model tab"),
-    ("📉  Run 12-yr backtest", "backtest.py", "~4 min · replay the strategy across history"),
-    ("✅  Re-certify edge", "baseline_null.py", "~1 min · permutation test"),
+    ("Run full daily cycle", "run_daily.py", "~4 min · update data, make picks, score trades"),
+    ("Generate picks", "predict_live.py", "~3 min · fresh picks from the latest data"),
+    ("Update data only", "database.py", "~2 min · pull the latest close"),
+    ("Rebuild model stats", "pipeline.py", "~2 min · refresh the Model tab"),
+    ("Run 12-yr backtest", "backtest.py", "~4 min · replay the strategy across history"),
+    ("Re-certify edge", "baseline_null.py", "~1 min · permutation test"),
 ]
 for label, script, help_ in ACTIONS:
     if st.sidebar.button(label, use_container_width=True, help=help_):
@@ -232,8 +291,11 @@ st.sidebar.caption("⚠️ Local tool — do not deploy publicly (the buttons ru
 # PAGE
 # ==================================================
 
-st.title("📈 Stock_trade")
-st.markdown("##### Your certified, self-running S&P 500 swing-trading model")
+st.markdown(
+    '<div class="app-head"><div class="t">Stock<b>_</b>trade</div>'
+    '<div class="s">S&amp;P 500 swing-trading research &nbsp;·&nbsp; walk-forward validated '
+    '&nbsp;·&nbsp; live on Alpaca paper</div></div>',
+    unsafe_allow_html=True)
 
 if st.session_state.get("run_out"):
     ok = st.session_state.get("run_ok")
@@ -251,7 +313,7 @@ if not DB_PATH.exists():
     st.stop()
 
 tab_overview, tab_picks, tab_backtest, tab_model, tab_live, tab_logs = st.tabs(
-    ["📊 Overview", "🎯 Picks", "📉 Backtest", "📈 Model", "🤖 Live paper", "📜 Run log"])
+    ["Overview", "Picks", "Backtest", "Model", "Live paper", "Run log"])
 
 with tab_overview:
     stats, perf, rec = db_stats(), model_perf(), paper_record()
@@ -383,7 +445,7 @@ with tab_live:
     c[4].metric("Win rate", "—" if rec["win_rate"] is None else f"{rec['win_rate']:.0%}")
 
     # live read-only pull (button-triggered)
-    if st.button("🔄 Refresh live from Alpaca (read-only)", type="primary"):
+    if st.button("Refresh from Alpaca  ·  read-only", type="primary"):
         st.session_state["alpaca_now"] = fetch_alpaca_now()
     snap = st.session_state.get("alpaca_now")
     if snap and "error" in snap:
