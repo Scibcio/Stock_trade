@@ -461,6 +461,7 @@ The kill list. Every future experiment that dies lands here with its numbers.
 | Faster cadence (every 1/2/5 sessions) | Sharpe 0.36–0.38 vs 0.50, 3–21× turnover | same capital split thinner; churn cost beats signal freshness — 10-session cadence kept |
 | Meta-labeling (U5) | pool AUC +0.019 (5.6σ) but +1.3σ on traded picks | real edge across the wide pool, noise among already-selected top-15; not worth a 2nd live model |
 | Beta-hedge / market-neutral (U7) | market-neutral CAGR −2.1% at β/corr −0.00 | the edge IS beta; no positive alpha to hedge for — keep long-only (U9), kill portable-alpha |
+| Shorter hold (5 / 7-day vs 10) | Sharpe 0.16 / 0.33 vs 0.52; DD −39% / −24% vs −20% | exits before the 10-day predicted move completes — horizon mismatch, doubles turnover, worsens drawdown |
 
 ---
 
