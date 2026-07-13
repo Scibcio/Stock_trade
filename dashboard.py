@@ -147,6 +147,49 @@ def paper_record() -> dict:
             "win_rate": (d.get("win", 0) / closed) if closed else None}
 
 
+@st.cache_data(ttl=120)
+def cohort_results():
+    # mark-to-market of the latest cohort: walk each pick forward from its entry
+    # close and apply the ±3% / 10-day barrier. Would-have paper result, not the
+    # clean broker record (close entry, survivorship-biased) - clearly labelled.
+    import config
+    picks = _query("SELECT ticker, entry_close, prob FROM paper_trades "
+                   "WHERE pick_date=(SELECT MAX(pick_date) FROM paper_trades) ORDER BY prob DESC")
+    if picks.empty or picks["entry_close"].isna().all():
+        return None
+    pdate = _query("SELECT MAX(pick_date) AS d FROM paper_trades")["d"].iloc[0]
+    tk = list(picks["ticker"])
+    qm = ",".join("?" * len(tk))
+    fwd = _query(f"SELECT ticker, date, close FROM daily_prices WHERE ticker IN ({qm}) AND date>? ORDER BY date",
+                 tuple(tk) + (pdate,))
+    if fwd.empty:
+        return None
+    TP, SL, HOLD = config.EXIT_TAKE_PROFIT, config.EXIT_STOP_LOSS, config.HOLD_DAYS
+    rows = []
+    for _, p in picks.iterrows():
+        entry = p["entry_close"]
+        f = fwd[fwd["ticker"] == p["ticker"]].head(HOLD)
+        if pd.isna(entry) or f.empty:
+            continue
+        status, exit_px, ret = "open", f["close"].iloc[-1], f["close"].iloc[-1] / entry - 1
+        for _, r in f.iterrows():
+            rr = r["close"] / entry - 1
+            if rr <= SL:
+                status, exit_px, ret = "loss", r["close"], rr
+                break
+            if rr >= TP:
+                status, exit_px, ret = "win", r["close"], rr
+                break
+        rows.append({"ticker": p["ticker"], "entry": entry, "exit": exit_px, "ret": ret, "status": status})
+    if not rows:
+        return None
+    r = pd.DataFrame(rows)
+    return {"table": r, "pdate": pdate, "n": len(r),
+            "wins": int((r["status"] == "win").sum()), "losses": int((r["status"] == "loss").sum()),
+            "open_": int((r["status"] == "open").sum()), "green": int((r["ret"] > 0).sum()),
+            "avg": float(r["ret"].mean())}
+
+
 @st.cache_data(ttl=300)
 def model_perf():
     # XGB-only is the live signal (F6); the LSTM CSV enriches the view if present
@@ -365,6 +408,25 @@ with tab_picks:
         st.dataframe(table, use_container_width=True, hide_index=True)
         st.caption("Sector spread:")
         st.bar_chart(picks["sector"].value_counts())
+
+        res = cohort_results()
+        if res:
+            st.subheader(f"Cohort result — mark-to-market · {res['pdate']}")
+            st.caption("**Would-have paper result** (close entry, ±3% / 10-day, survivorship-biased) — "
+                       "updates daily until the cohort matures. Not the clean broker record.")
+            c = st.columns(4)
+            c[0].metric("Green", f"{res['green']} / {res['n']}")
+            c[1].metric("Wins / Losses", f"{res['wins']}W / {res['losses']}L")
+            c[2].metric("Still open", res["open_"])
+            c[3].metric("Avg pick", f"{res['avg']:+.2%}")
+            rtab = pd.DataFrame({
+                "Ticker": res["table"]["ticker"].values,
+                "Entry": [f"${e:,.2f}" for e in res["table"]["entry"]],
+                "Now / exit": [f"${e:,.2f}" for e in res["table"]["exit"]],
+                "Return": [f"{r:+.1%}" for r in res["table"]["ret"]],
+                "Status": res["table"]["status"].str.upper().values,
+            })
+            st.dataframe(rtab, use_container_width=True, hide_index=True)
 
 with tab_backtest:
     bt = backtest_data()
