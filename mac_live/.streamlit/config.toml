@@ -1,0 +1,16 @@
+# Streamlit theme — "Ledger": warm editorial-finance, deliberately NOT the
+# blue/purple AI look. Paper background, ink text, one restrained bronze accent;
+# green/red are reserved for P&L only. Fine typography is done in dashboard CSS.
+
+[theme]
+base = "light"
+primaryColor = "#a86f2c"              # bronze/ochre accent (buttons, active tab, links)
+backgroundColor = "#faf8f4"           # warm paper
+secondaryBackgroundColor = "#f2ece3"  # sidebar / widgets (warm neutral)
+textColor = "#231f18"                 # warm near-black ink
+font = "sans serif"
+
+[server]
+headless = false
+runOnSave = true
+address = "127.0.0.1"

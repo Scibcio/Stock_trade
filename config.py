@@ -126,10 +126,10 @@ NEW_FEATURES = ["SMA_200_Dist"] + CROSS_FEATURES
 # ----------------------------------
 # PAPER TRADING  (Phase 3 — Alpaca DEMO account; real money is out of scope, forever)
 # ----------------------------------
-PAPER_EQUITY_CAP  = 10_000        # behave like a realistic small account despite $100k paper cash
-PORTFOLIO_MODE    = "satellite"   # "satellite" = (1-w) SPY core + w strategy sleeve | "pure" = 100% strategy
-SATELLITE_WEIGHT  = 0.25          # U9: start conservative (panel tested 0.25-0.50; 50/50 = Sharpe 0.92)
-MAX_ORDER_NOTIONAL = 2_000        # hard per-order cap (safety rail)
+PAPER_EQUITY_CAP  = 100_000       # deploy the whole paper account (was 10_000 = small-account sim)
+PORTFOLIO_MODE    = "satellite"   # 90% strategy sleeve + 10% SPY core ('satellite' = (1-w) SPY + w strategy)
+SATELLITE_WEIGHT  = 0.90          # 90% strategy, 10% SPY core (user choice)
+MAX_ORDER_NOTIONAL = 15_000       # per-order rail: top name ~0.086 x 90k sleeve = $7.7k, headroom to 15k
 MIN_ORDER_NOTIONAL = 1.0          # Alpaca's $1 minimum for notional orders
 HALT_FILE = HERE / "HALT"         # create this file to block ALL new orders (kill switch)
 SUBMIT_MAX_HOURS  = 30            # only queue entries when the next session opens within this

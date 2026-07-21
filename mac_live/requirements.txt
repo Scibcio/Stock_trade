@@ -1,0 +1,16 @@
+# mac_live dependencies (unpinned for cross-platform / macOS wheel compatibility).
+# No torch (the live path is XGBoost only) and no pytest (no tests here).
+#   python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+
+pandas
+numpy
+requests
+yfinance
+pytz
+lxml
+scikit-learn
+scipy
+xgboost
+streamlit
+alpaca-py
+python-dotenv

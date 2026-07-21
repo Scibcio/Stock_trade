@@ -45,3 +45,9 @@ __pycache__/
 
 # U6 point-in-time membership cache (7MB, regenerable)
 sp500_membership.csv
+
+# Build / transfer artifacts (e.g. zipped mac_live for copying to another machine)
+*.zip
+
+# Local-only experimental sweeps (kept on the machine, not shipped)
+run_maxprofit_sweep.py
